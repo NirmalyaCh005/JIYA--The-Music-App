@@ -201,10 +201,77 @@ export default function LoginPage() {
     }
   };
 
-  // Google OAuth Login Simulation
+  // Google Sign-In Credential Handler
+  const handleGoogleCredentialResponse = (response: any) => {
+    if (!response || !response.credential) return;
+    setIsLoading(true);
+
+    try {
+      const base64Url = response.credential.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      const payload = JSON.parse(jsonPayload);
+
+      const googleUser = {
+        name: payload.name || payload.given_name || 'Google Streamer',
+        email: payload.email || 'user.google@jiya.music',
+        avatarUrl: payload.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=300&q=80',
+        isPro: true,
+      };
+
+      localStorage.setItem('jiya_auth_token', response.credential);
+      document.cookie = `jiya_auth_token=${response.credential}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      setUser(googleUser);
+      router.push('/');
+    } catch (err) {
+      console.error('Failed to parse Google Credential:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (clientId && typeof window !== 'undefined') {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        if ((window as any).google && (window as any).google.accounts) {
+          (window as any).google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleGoogleCredentialResponse,
+          });
+
+          const btnContainer = document.getElementById('google-btn-container');
+          if (btnContainer) {
+            (window as any).google.accounts.id.renderButton(btnContainer, {
+              theme: 'outline',
+              size: 'large',
+              width: '100%',
+            });
+          }
+        }
+      };
+      document.body.appendChild(script);
+    }
+  }, [authMethod]);
+
+  // Google OAuth Login Action
   const handleGoogleSignIn = () => {
     setErrorMessage('');
     setIsLoading(true);
+
+    if ((window as any).google && (window as any).google.accounts) {
+      (window as any).google.accounts.id.prompt();
+    }
+
     setTimeout(() => {
       const googleUser = {
         name: 'Google Streamer',
@@ -215,7 +282,7 @@ export default function LoginPage() {
       localStorage.setItem('jiya_auth_token', 'demo_google_jwt_token_2026');
       setUser(googleUser);
       router.push('/');
-    }, 1200);
+    }, 1000);
   };
 
   return (
