@@ -4,19 +4,84 @@ import { ALL_INITIAL_TRACKS } from '@/lib/constants/featuredTracks';
 export const dynamic = 'force-dynamic';
 
 const searchCache = new Map<string, any[]>();
+let spotifyTokenCache: { token: string; expiresAt: number } | null = null;
 
-function parseDuration(durationStr?: string): number {
-  if (!durationStr) return 210;
-  const parts = durationStr.split(':').map((p) => parseInt(p, 10));
-  if (parts.length === 2) {
-    return (parts[0] || 0) * 60 + (parts[1] || 0);
-  } else if (parts.length === 3) {
-    return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+// Helper: Get Spotify Client Access Token
+async function getSpotifyAccessToken(clientId: string, clientSecret: string): Promise<string | null> {
+  if (spotifyTokenCache && Date.now() < spotifyTokenCache.expiresAt) {
+    return spotifyTokenCache.token;
   }
-  return 210;
+
+  try {
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials',
+      next: { revalidate: 3500 },
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    if (data.access_token) {
+      spotifyTokenCache = {
+        token: data.access_token,
+        expiresAt: Date.now() + (data.expires_in - 100) * 1000,
+      };
+      return data.access_token;
+    }
+  } catch (e) {
+    // Ignore token errors
+  }
+  return null;
 }
 
-// 1. Official YouTube Data API v3 Search
+// 1. Official Spotify Web API Search Engine
+async function searchSpotifyOfficialApi(query: string, clientId: string, clientSecret: string): Promise<any[]> {
+  try {
+    const token = await getSpotifyAccessToken(clientId, clientSecret);
+    if (!token) return [];
+
+    const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=15`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.tracks || !Array.isArray(data.tracks.items)) return [];
+
+    return data.tracks.items.map((item: any) => {
+      const coverUrl = item.album?.images?.[0]?.url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80';
+      const artist = item.artists?.map((a: any) => a.name).join(', ') || 'Artist';
+
+      const localMatch = ALL_INITIAL_TRACKS.find(
+        (t) =>
+          t.title.toLowerCase().includes(item.name.toLowerCase()) ||
+          item.name.toLowerCase().includes(t.title.toLowerCase())
+      );
+
+      return {
+        id: `spotify-${item.id}`,
+        title: item.name,
+        artist,
+        album: item.album?.name || 'Single',
+        genre: 'Spotify Music',
+        duration: Math.round(item.duration_ms / 1000) || 210,
+        youtubeId: localMatch ? localMatch.youtubeId : null,
+        coverUrl,
+      };
+    });
+  } catch (e) {
+    return [];
+  }
+}
+
+// 2. Official YouTube Data API v3 Search
 async function searchYouTubeOfficialApi(query: string, apiKey: string): Promise<any[]> {
   try {
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=12&q=${encodeURIComponent(
@@ -49,7 +114,7 @@ async function searchYouTubeOfficialApi(query: string, apiKey: string): Promise<
   }
 }
 
-// 2. Direct YouTube HTML Scraper Engine
+// 3. Direct YouTube HTML Scraper Engine
 async function searchYouTubeDirect(query: string): Promise<any[]> {
   try {
     const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' song')}`;
@@ -91,7 +156,7 @@ async function searchYouTubeDirect(query: string): Promise<any[]> {
               const artist = vr.ownerText?.runs?.[0]?.text || 'Artist';
               const rawThumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url;
               const coverUrl = rawThumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-              const duration = parseDuration(vr.lengthText?.simpleText);
+              const duration = 210;
 
               items.push({
                 id: `yt-${videoId}`,
@@ -118,7 +183,7 @@ async function searchYouTubeDirect(query: string): Promise<any[]> {
   }
 }
 
-// 3. iTunes Global Search API Engine
+// 4. iTunes Global Search API Engine
 async function searchiTunes(query: string): Promise<any[]> {
   try {
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`;
@@ -170,6 +235,8 @@ export async function GET(request: NextRequest) {
     }
 
     const ytApiKey = process.env.YOUTUBE_API_KEY;
+    const spotifyClientId = process.env.SPOTIFY_CLIENT_ID;
+    const spotifyClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
     // A. Match local initial tracks
     const localMatches = ALL_INITIAL_TRACKS.filter(
@@ -179,27 +246,32 @@ export async function GET(request: NextRequest) {
         (t.album && t.album.toLowerCase().includes(cacheKey))
     );
 
-    // B. Fetch live results (Official YouTube API if key provided, else Scraper & iTunes)
-    const ytResults = ytApiKey
-      ? await searchYouTubeOfficialApi(query, ytApiKey)
-      : await searchYouTubeDirect(query);
-
-    const itunesResults = await searchiTunes(query);
+    // B. Fetch live results from Spotify, YouTube, iTunes
+    const [spotifyResults, ytResults, itunesResults] = await Promise.all([
+      spotifyClientId && spotifyClientSecret
+        ? searchSpotifyOfficialApi(query, spotifyClientId, spotifyClientSecret)
+        : Promise.resolve([]),
+      ytApiKey
+        ? searchYouTubeOfficialApi(query, ytApiKey)
+        : searchYouTubeDirect(query),
+      searchiTunes(query),
+    ]);
 
     // Combine & deduplicate results
-    const combined: any[] = [...localMatches];
-    const existingIds = new Set(combined.map((t) => t.youtubeId || t.id));
+    const combined: any[] = [...localMatches, ...spotifyResults];
+    const existingTitles = new Set(combined.map((t) => t.title.toLowerCase()));
 
     for (const item of ytResults) {
-      if (item.youtubeId && !existingIds.has(item.youtubeId)) {
+      if (!existingTitles.has(item.title.toLowerCase())) {
         combined.push(item);
-        existingIds.add(item.youtubeId);
+        existingTitles.add(item.title.toLowerCase());
       }
     }
 
     for (const item of itunesResults) {
-      if (!combined.some((t) => t.title.toLowerCase() === item.title.toLowerCase())) {
+      if (!existingTitles.has(item.title.toLowerCase())) {
         combined.push(item);
+        existingTitles.add(item.title.toLowerCase());
       }
     }
 
