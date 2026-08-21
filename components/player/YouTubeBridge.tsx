@@ -13,6 +13,7 @@ declare global {
 export function YouTubeBridge() {
   const playerRef = useRef<any | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const keepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const {
     currentTrack,
@@ -25,9 +26,112 @@ export function YouTubeBridge() {
     setCurrentTime,
     setDuration,
     playNext,
+    playPrevious,
+    seekToTime,
   } = usePlayerStore();
 
-  // 1. Dynamically Load YouTube IFrame API Script (NO AUTOPLAY ON INIT)
+  // 1. Initialize Silent Background Keep-Alive Audio Element for Mobile Browsers
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!keepAliveAudioRef.current) {
+      const audio = new Audio();
+      // Silent 1-second PCM WAV loop
+      audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      audio.loop = true;
+      audio.volume = 0.001; // Silent output to hold OS audio session focus
+      keepAliveAudioRef.current = audio;
+    }
+  }, []);
+
+  // 2. Mobile MediaSession API Integration (Lock Screen & Background Notification Center Controls)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+
+    if (currentTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: currentTrack.album || 'JIYA Music',
+        artwork: [
+          {
+            src: currentTrack.coverUrl || '/samples/covers/cyberpunk.jpg',
+            sizes: '512x512',
+            type: 'image/jpeg',
+          },
+        ],
+      });
+
+      // Media Session Action Handlers for Background Playback
+      try {
+        navigator.mediaSession.setActionHandler('play', () => {
+          setPlaying(true);
+          const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+          if (player && typeof player.playVideo === 'function') player.playVideo();
+        });
+
+        navigator.mediaSession.setActionHandler('pause', () => {
+          setPlaying(false);
+          const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+          if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
+        });
+
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          playPrevious();
+        });
+
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          playNext();
+        });
+
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime !== undefined) {
+            seekToTime(details.seekTime);
+          }
+        });
+      } catch (e) {
+        // Fallback if browser doesn't support specific action
+      }
+    }
+  }, [currentTrack, playNext, playPrevious, seekToTime, setPlaying]);
+
+  // 3. Keep-Alive Audio Sync on Play / Pause (Prevents OS from suspending audio on screen off)
+  useEffect(() => {
+    const keepAlive = keepAliveAudioRef.current;
+    if (!keepAlive) return;
+
+    if (isPlaying && currentTrack) {
+      keepAlive.play().catch(() => {
+        // Auto-play policy handled on touch interaction
+      });
+    } else {
+      keepAlive.pause();
+    }
+  }, [isPlaying, currentTrack]);
+
+  // 4. Background Visibility Change Handler (Re-enforces playback when switching tabs or locking screen)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && isPlaying && currentTrack) {
+        const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+        if (player && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+        if (keepAliveAudioRef.current) {
+          keepAliveAudioRef.current.play().catch(() => {});
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isPlaying, currentTrack]);
+
+  // 5. Dynamically Load YouTube IFrame API Script
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -54,7 +158,6 @@ export function YouTubeBridge() {
             setYtPlayer(event.target);
             event.target.setVolume(isMuted ? 0 : volume * 100);
 
-            // Only load/play if user had an active playing session
             if (currentTrack && isPlaying) {
               if (currentTrack.youtubeId) {
                 event.target.loadVideoById({
@@ -75,6 +178,9 @@ export function YouTubeBridge() {
             // YT.PlayerState: UNSTARTED (-1), ENDED (0), PLAYING (1), PAUSED (2), BUFFERING (3)
             if (event.data === 1) {
               setPlaying(true);
+              if (keepAliveAudioRef.current) {
+                keepAliveAudioRef.current.play().catch(() => {});
+              }
             } else if (event.data === 2) {
               setPlaying(false);
             } else if (event.data === 0) {
@@ -100,7 +206,7 @@ export function YouTubeBridge() {
     }
   }, []);
 
-  // 2. Dynamic Universal Track Switcher (Triggers ONLY when user selects a track)
+  // 6. Dynamic Universal Track Switcher
   useEffect(() => {
     const player = playerRef.current || usePlayerStore.getState().ytPlayer;
     if (!player || !currentTrack) return;
@@ -130,7 +236,7 @@ export function YouTubeBridge() {
     }
   }, [currentTrack]);
 
-  // 3. Sync Play / Pause State with YT Player
+  // 7. Sync Play / Pause State with YT Player
   useEffect(() => {
     const player = playerRef.current || usePlayerStore.getState().ytPlayer;
     if (!player || typeof player.getPlayerState !== 'function') return;
@@ -151,7 +257,7 @@ export function YouTubeBridge() {
     }
   }, [isPlaying]);
 
-  // 4. Progress Bar Sync Interval (Poll current time every 250ms)
+  // 8. Progress Bar & Position State Sync Interval (Poll current time every 250ms & update MediaSession position state)
   useEffect(() => {
     const interval = setInterval(() => {
       const player = playerRef.current || usePlayerStore.getState().ytPlayer;
@@ -164,6 +270,19 @@ export function YouTubeBridge() {
         setCurrentTime(time);
         if (dur > 0) {
           setDuration(dur);
+
+          // Sync position state with Mobile Lock Screen / Control Center media controls
+          if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+            try {
+              navigator.mediaSession.setPositionState({
+                duration: dur,
+                playbackRate: 1,
+                position: Math.min(time, dur),
+              });
+            } catch (err) {
+              // Ignore position state errors
+            }
+          }
         }
       } catch (e) {
         // Player initializing
