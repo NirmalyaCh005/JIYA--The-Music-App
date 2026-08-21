@@ -64,27 +64,37 @@ export function YouTubeBridge() {
           }
         }
       };
-      audio.onerror = (e) => {
-        console.warn('Native HTML5 Audio error, attempting streaming proxy or YouTube fallback:', e);
+      audio.onerror = async (e) => {
+        console.warn('Native HTML5 Audio error, attempting YouTube fallback:', e);
         const track = usePlayerStore.getState().currentTrack;
-
-        if (track && track.audioUrl && !track.audioUrl.startsWith('/api/stream/audio')) {
-          const proxyUrl = `/api/stream/audio?url=${encodeURIComponent(track.audioUrl)}`;
-          audio.src = proxyUrl;
-          audio.play().catch(() => {
-            activeEngineRef.current = 'iframe';
-            const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-            if (player && typeof player.playVideo === 'function') {
-              player.playVideo();
-            }
-          });
-          return;
-        }
+        if (!track) return;
 
         activeEngineRef.current = 'iframe';
+        let cleanYtId = sanitizeYouTubeId(track.youtubeId);
+
+        if (!cleanYtId) {
+          try {
+            const res = await fetch(
+              `/api/resolve-track?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data.youtubeId) cleanYtId = sanitizeYouTubeId(data.youtubeId);
+            }
+          } catch (err) {}
+        }
+
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-        if (player && typeof player.playVideo === 'function') {
-          player.playVideo();
+        if (player && cleanYtId && typeof player.loadVideoById === 'function') {
+          try {
+            player.loadVideoById({
+              videoId: cleanYtId,
+              startSeconds: 0,
+            });
+            if (typeof player.playVideo === 'function') {
+              player.playVideo();
+            }
+          } catch (err) {}
         }
       };
     }
@@ -98,57 +108,52 @@ export function YouTubeBridge() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title,
         artist: currentTrack.artist,
-        album: currentTrack.album || 'JIYA Music Engine',
+        album: currentTrack.album || 'Jiya Music',
         artwork: [
-          {
-            src: currentTrack.coverUrl || '/samples/covers/cyberpunk.jpg',
-            sizes: '512x512',
-            type: 'image/jpeg',
-          },
+          { src: currentTrack.coverUrl || '', sizes: '96x96', type: 'image/jpeg' },
+          { src: currentTrack.coverUrl || '', sizes: '128x128', type: 'image/jpeg' },
+          { src: currentTrack.coverUrl || '', sizes: '192x192', type: 'image/jpeg' },
+          { src: currentTrack.coverUrl || '', sizes: '512x512', type: 'image/jpeg' },
         ],
       });
-
-      try {
-        navigator.mediaSession.setActionHandler('play', () => {
-          setPlaying(true);
-          if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
-            nativeAudioRef.current.play().catch(() => {});
-          } else {
-            const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-            if (player && typeof player.playVideo === 'function') player.playVideo();
-          }
-        });
-
-        navigator.mediaSession.setActionHandler('pause', () => {
-          setPlaying(false);
-          if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
-            nativeAudioRef.current.pause();
-          } else {
-            const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-            if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
-          }
-        });
-
-        navigator.mediaSession.setActionHandler('previoustrack', () => {
-          playPrevious();
-        });
-
-        navigator.mediaSession.setActionHandler('nexttrack', () => {
-          playNext();
-        });
-
-        navigator.mediaSession.setActionHandler('seekto', (details) => {
-          if (details.seekTime !== undefined) {
-            seekToTime(details.seekTime);
-            if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
-              nativeAudioRef.current.currentTime = details.seekTime;
-            }
-          }
-        });
-      } catch (e) {
-        // Ignored
-      }
     }
+
+    const setHandler = (action: MediaSessionAction, handler: ((details?: any) => void) | null) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (e) {}
+    };
+
+    setHandler('play', () => {
+      setPlaying(true);
+      if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
+        nativeAudioRef.current.play().catch(() => {});
+      } else {
+        const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+        if (player && typeof player.playVideo === 'function') player.playVideo();
+      }
+    });
+
+    setHandler('pause', () => {
+      setPlaying(false);
+      if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
+        nativeAudioRef.current.pause();
+      } else {
+        const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+        if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
+      }
+    });
+
+    setHandler('previoustrack', () => playPrevious());
+    setHandler('nexttrack', () => playNext());
+    setHandler('seekto', (details: any) => {
+      if (details?.seekTime !== undefined && details?.seekTime !== null) {
+        seekToTime(details.seekTime);
+        if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
+          nativeAudioRef.current.currentTime = details.seekTime;
+        }
+      }
+    });
   }, [currentTrack, playNext, playPrevious, seekToTime, setPlaying]);
 
   const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -224,7 +229,10 @@ export function YouTubeBridge() {
         if (!isCancelled) {
           activeEngineRef.current = 'native';
           if (nativeAudioRef.current) {
-            nativeAudioRef.current.src = currentTrack.audioUrl;
+            const finalSrc = currentTrack.audioUrl.startsWith('http')
+              ? `/api/stream/audio?url=${encodeURIComponent(currentTrack.audioUrl)}`
+              : currentTrack.audioUrl;
+            nativeAudioRef.current.src = finalSrc;
             nativeAudioRef.current.volume = isMuted ? 0 : volume;
 
             // Pause YouTube IFrame if active
