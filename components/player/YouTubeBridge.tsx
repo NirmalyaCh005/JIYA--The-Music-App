@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { usePlayerStore } from '@/lib/store/usePlayerStore';
+import { sanitizeYouTubeId } from '@/lib/utils/youtube';
 
 declare global {
   interface Window {
@@ -136,58 +137,49 @@ export function YouTubeBridge() {
     }
   }, [currentTrack, playNext, playPrevious, seekToTime, setPlaying]);
 
-  // 3. Dual Engine Track Switcher (Direct HTML5 Audio Stream First -> YouTube IFrame Fallback)
+  // 3. Direct YouTube IFrame & Native Audio Engine Switcher
   useEffect(() => {
     if (!currentTrack) return;
 
     let isCancelled = false;
 
     const loadTrackAudio = async () => {
-      const vidId = currentTrack.youtubeId;
+      // 1. If track has custom audio URL (e.g. user uploaded MP3/WAV file)
+      if (currentTrack.audioUrl) {
+        if (!isCancelled) {
+          activeEngineRef.current = 'native';
+          if (nativeAudioRef.current) {
+            nativeAudioRef.current.src = currentTrack.audioUrl;
+            nativeAudioRef.current.volume = isMuted ? 0 : volume;
 
-      if (vidId) {
-        try {
-          const res = await fetch(`/api/stream?id=${encodeURIComponent(vidId)}`);
-          if (res.ok && !isCancelled) {
-            const data = await res.json();
-            if (data.streamUrl && nativeAudioRef.current) {
-              activeEngineRef.current = 'native';
-              nativeAudioRef.current.src = data.streamUrl;
-              nativeAudioRef.current.volume = isMuted ? 0 : volume;
+            // Pause YouTube IFrame if active
+            const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+            if (player && typeof player.pauseVideo === 'function') {
+              try { player.pauseVideo(); } catch (err) {}
+            }
 
-              // Pause YouTube IFrame if active
-              const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-              if (player && typeof player.pauseVideo === 'function') {
-                try { player.pauseVideo(); } catch (err) {}
-              }
-
-              if (isPlayingRef.current) {
-                nativeAudioRef.current.play().catch(() => {
-                  // Fallback to IFrame on autoplay restriction
-                  activeEngineRef.current = 'iframe';
-                  if (player && typeof player.playVideo === 'function') player.playVideo();
-                });
-              }
-              return;
+            if (isPlayingRef.current) {
+              nativeAudioRef.current.play().catch(() => {});
             }
           }
-        } catch (err) {
-          // Fallback to IFrame
         }
+        return;
       }
 
-      // Fallback Engine: YouTube IFrame
+      // 2. Direct YouTube IFrame Player Engine (Sanitizes 11-char Video ID to prevent Error Code 2)
       if (!isCancelled) {
         activeEngineRef.current = 'iframe';
         if (nativeAudioRef.current) nativeAudioRef.current.pause();
 
+        const cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId);
+
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
         if (player) {
           try {
-            if (currentTrack.youtubeId) {
+            if (cleanYtId) {
               if (typeof player.loadVideoById === 'function') {
                 player.loadVideoById({
-                  videoId: currentTrack.youtubeId,
+                  videoId: cleanYtId,
                   startSeconds: 0,
                 });
               }
@@ -255,7 +247,7 @@ export function YouTubeBridge() {
       playerRef.current = new window.YT.Player('jiya-yt-player', {
         height: '1',
         width: '1',
-        videoId: currentTrack?.youtubeId || '',
+        videoId: sanitizeYouTubeId(currentTrack?.youtubeId) || '',
         playerVars: {
           autoplay: 0,
           controls: 0,

@@ -83,17 +83,18 @@ export default function HomePage() {
         {/* If searching, render Live Search Results */}
         {searchQuery ? (
           <section className="space-y-6 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h2
-                className={`text-2xl font-extrabold flex items-center gap-2.5 ${
+                className={`text-lg sm:text-2xl font-extrabold flex items-center gap-2.5 flex-wrap ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}
               >
-                <Music2 className="w-6 h-6 text-blue-600" />
-                Search Results for <span className="text-blue-600">"{searchQuery}"</span>
+                <Music2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
+                <span>Search Results for</span>
+                <span className="text-blue-600">"{searchQuery}"</span>
               </h2>
               <span
-                className={`text-xs font-mono px-3 py-1 rounded-full border ${
+                className={`self-start sm:self-auto text-xs font-mono px-3 py-1 rounded-full border shrink-0 ${
                   isDark
                     ? 'bg-white/5 border-white/10 text-slate-400'
                     : 'bg-white border-slate-200 text-slate-600 shadow-sm'

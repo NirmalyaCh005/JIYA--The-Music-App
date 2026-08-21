@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
@@ -55,6 +55,17 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const { playTrack } = useAudioPlayer();
 
@@ -214,7 +225,7 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
           </button>
         </div>
 
-        <div className="relative flex-1 min-w-0">
+        <div className="relative flex-1 min-w-0" ref={searchRef}>
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -229,34 +240,44 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
             }`}
           />
 
-          {/* Interactive Live Search Results Dropdown */}
+          {/* Interactive Live Search Results Dropdown (Mobile-responsive fixed overlay / Desktop absolute dropdown) */}
           {showSearchDropdown && (
             <div
-              className={`absolute left-0 right-0 mt-2 rounded-2xl border shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-80 overflow-y-auto custom-scrollbar ${
+              className={`fixed left-3 right-3 top-[68px] sm:absolute sm:left-0 sm:right-auto sm:top-full sm:mt-2.5 sm:w-[420px] max-h-[75vh] sm:max-h-96 overflow-y-auto custom-scrollbar rounded-2xl border shadow-2xl p-3.5 z-[90] animate-in fade-in slide-in-from-top-2 duration-200 ${
                 isDark
-                  ? 'bg-[#0E1420] border-white/15 text-white'
-                  : 'bg-white border-slate-200 text-slate-900'
+                  ? 'bg-[#0B0F17]/95 backdrop-blur-2xl border-white/15 text-white shadow-blue-950/40'
+                  : 'bg-white/95 backdrop-blur-2xl border-slate-200 text-slate-900 shadow-slate-900/15'
               }`}
             >
-              <div className="flex items-center justify-between px-2 pb-2 border-b border-white/10 mb-2">
-                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                  Live Search Results ({searchResults.length})
-                </span>
+              <div className="flex items-center justify-between px-1 pb-2.5 mb-2 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  </span>
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-300">
+                    Live Search Results
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                    {searchResults.length}
+                  </span>
+                </div>
                 <button
                   onClick={() => setShowSearchDropdown(false)}
-                  className="text-slate-400 hover:text-white text-xs p-1"
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Close Quick Search"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
               {isSearching ? (
-                <div className="py-6 text-center text-slate-400 flex items-center justify-center gap-2 text-xs font-bold">
+                <div className="py-8 text-center text-slate-400 flex items-center justify-center gap-2 text-xs font-bold">
                   <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                   <span>Searching music database...</span>
                 </div>
               ) : searchResults.length === 0 ? (
-                <div className="py-6 text-center text-slate-400 text-xs font-medium">
+                <div className="py-8 text-center text-slate-400 text-xs font-medium">
                   No matching tracks found for "{searchQuery}"
                 </div>
               ) : (
@@ -268,27 +289,27 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
                         playTrack(track);
                         setShowSearchDropdown(false);
                       }}
-                      className="p-2 rounded-xl hover:bg-blue-600/15 border border-transparent hover:border-blue-500/20 flex items-center justify-between gap-3 cursor-pointer transition-all group"
+                      className="p-2.5 rounded-xl hover:bg-blue-600/15 border border-transparent hover:border-blue-500/20 flex items-center justify-between gap-3 cursor-pointer transition-all group active:scale-[0.99]"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-white/10 bg-slate-950 shrink-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="relative w-11 h-11 rounded-xl overflow-hidden border border-white/10 bg-slate-950 shrink-0 shadow-sm group-hover:scale-105 transition-transform duration-200">
                           <img
                             src={track.coverUrl || '/samples/covers/cyberpunk.jpg'}
                             alt={track.title}
                             className="w-full h-full object-cover"
                           />
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-extrabold truncate group-hover:text-blue-400">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-slate-100 truncate group-hover:text-blue-400 transition-colors">
                             {track.title}
                           </p>
-                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                          <p className="text-[11px] font-medium text-slate-400 truncate mt-0.5">
                             {track.artist}
                           </p>
                         </div>
                       </div>
 
-                      <button className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center shadow hover:scale-110 active:scale-95 transition-all shrink-0">
+                      <button className="w-8.5 h-8.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 hover:scale-110 active:scale-95 transition-all shrink-0">
                         <Play className="w-3.5 h-3.5 fill-white ml-0.5" />
                       </button>
                     </div>

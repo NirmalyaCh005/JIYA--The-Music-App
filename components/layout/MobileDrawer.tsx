@@ -13,6 +13,8 @@ import {
   Heart,
   UploadCloud,
   LogOut,
+  Globe,
+  ExternalLink,
 } from 'lucide-react';
 import { usePlayerStore } from '@/lib/store/usePlayerStore';
 
@@ -115,6 +117,20 @@ export function MobileDrawer({ isOpen, onClose, onOpenUpload }: MobileDrawerProp
             <UploadCloud className="w-4.5 h-4.5 text-white shrink-0" />
             <span>Upload Custom Songs</span>
           </button>
+
+          <a
+            href="https://jiya-kappa.vercel.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            className="w-full mt-2.5 flex items-center justify-between px-4 py-3 rounded-2xl font-extrabold text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 transition-all group active:scale-95"
+          >
+            <span className="flex items-center gap-3">
+              <Globe className="w-4 h-4 text-blue-400 group-hover:rotate-12 transition-transform" />
+              <span>Live App Deployment</span>
+            </span>
+            <ExternalLink className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100" />
+          </a>
         </nav>
 
         {/* User Account & Sign Out Section */}

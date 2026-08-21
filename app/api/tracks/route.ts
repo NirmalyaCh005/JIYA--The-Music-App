@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -31,10 +33,10 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(tracks);
+    return NextResponse.json(tracks || []);
   } catch (error) {
-    console.error('Error fetching tracks:', error);
-    return NextResponse.json({ error: 'Failed to fetch tracks' }, { status: 500 });
+    console.warn('DB error in /api/tracks GET, returning fallback empty array []:', error);
+    return NextResponse.json([]);
   }
 }
 
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(newTrack, { status: 201 });
   } catch (error) {
-    console.error('Error creating track:', error);
+    console.warn('DB error in /api/tracks POST:', error);
     return NextResponse.json({ error: 'Failed to create track' }, { status: 500 });
   }
 }
