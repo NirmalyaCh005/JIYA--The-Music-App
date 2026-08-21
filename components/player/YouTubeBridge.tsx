@@ -27,7 +27,7 @@ export function YouTubeBridge() {
     playNext,
   } = usePlayerStore();
 
-  // 1. Dynamically Load YouTube IFrame API Script
+  // 1. Dynamically Load YouTube IFrame API Script (NO AUTOPLAY ON INIT)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -38,9 +38,9 @@ export function YouTubeBridge() {
       playerRef.current = new window.YT.Player('jiya-yt-player', {
         height: '1',
         width: '1',
-        videoId: currentTrack?.youtubeId || 'BddP6PYo2gs',
+        videoId: currentTrack?.youtubeId || '',
         playerVars: {
-          autoplay: 1,
+          autoplay: 0,
           controls: 0,
           disablekb: 1,
           fs: 0,
@@ -54,7 +54,8 @@ export function YouTubeBridge() {
             setYtPlayer(event.target);
             event.target.setVolume(isMuted ? 0 : volume * 100);
 
-            if (currentTrack) {
+            // Only load/play if user had an active playing session
+            if (currentTrack && isPlaying) {
               if (currentTrack.youtubeId) {
                 event.target.loadVideoById({
                   videoId: currentTrack.youtubeId,
@@ -82,10 +83,7 @@ export function YouTubeBridge() {
             }
           },
           onError: (err: any) => {
-            console.warn('YouTube Player Error, playing next track:', err);
-            setTimeout(() => {
-              playNext();
-            }, 1000);
+            console.warn('YouTube Player Error:', err);
           },
         },
       });
@@ -102,7 +100,7 @@ export function YouTubeBridge() {
     }
   }, []);
 
-  // 2. Dynamic Universal Track Switcher (Handles direct Video ID OR Client-side YouTube Search Resolution)
+  // 2. Dynamic Universal Track Switcher (Triggers ONLY when user selects a track)
   useEffect(() => {
     const player = playerRef.current || usePlayerStore.getState().ytPlayer;
     if (!player || !currentTrack) return;
@@ -114,10 +112,9 @@ export function YouTubeBridge() {
             videoId: currentTrack.youtubeId,
             startSeconds: 0,
           });
-          setPlaying(true);
+          if (isPlaying) setPlaying(true);
         }
       } else {
-        // Universal client-side YouTube search resolution for ANY song worldwide
         if (typeof player.loadPlaylist === 'function') {
           player.loadPlaylist({
             listType: 'search',
@@ -125,7 +122,7 @@ export function YouTubeBridge() {
             index: 0,
             startSeconds: 0,
           });
-          setPlaying(true);
+          if (isPlaying) setPlaying(true);
         }
       }
     } catch (e) {
