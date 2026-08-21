@@ -23,6 +23,11 @@ export const usePlayerStore = create<PlayerStoreState>()(
       user: null,
       recentlyPlayed: [],
 
+      isCrossfadeEnabled: true,
+      crossfadeDuration: 2,
+      toggleCrossfade: () => set((state) => ({ isCrossfadeEnabled: !state.isCrossfadeEnabled })),
+      setCrossfadeDuration: (dur) => set({ crossfadeDuration: Math.max(1, Math.min(10, dur)) }),
+
       setUser: (user) => set({ user }),
       toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
       toggleAmbientMode: (open) => {
@@ -345,6 +350,8 @@ export const usePlayerStore = create<PlayerStoreState>()(
         isMuted: state.isMuted,
         isShuffle: state.isShuffle,
         repeatMode: state.repeatMode,
+        isCrossfadeEnabled: state.isCrossfadeEnabled,
+        crossfadeDuration: state.crossfadeDuration,
         likedTrackIds: Array.from(
           state.likedTrackIds instanceof Set
             ? state.likedTrackIds

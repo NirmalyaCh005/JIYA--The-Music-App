@@ -137,7 +137,68 @@ export function YouTubeBridge() {
     }
   }, [currentTrack, playNext, playPrevious, seekToTime, setPlaying]);
 
-  // 3. Direct YouTube IFrame & Native Audio Engine Switcher
+  const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const applyVolumeFaded = (vol: number) => {
+    const { isMuted } = usePlayerStore.getState();
+    if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
+      nativeAudioRef.current.volume = isMuted ? 0 : Math.max(0, Math.min(1, vol));
+    } else {
+      const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+      if (player && typeof player.setVolume === 'function') {
+        try {
+          player.setVolume(isMuted ? 0 : Math.max(0, Math.min(100, vol * 100)));
+        } catch (err) {}
+      }
+    }
+  };
+
+  const crossfadeTrackChange = (loadTrackFn: () => void) => {
+    const { isCrossfadeEnabled, crossfadeDuration, volume, isMuted } = usePlayerStore.getState();
+
+    // If crossfade is disabled, muted, or no previous track was playing, load directly
+    if (!isCrossfadeEnabled || isMuted || volume === 0 || !isPlayingRef.current) {
+      loadTrackFn();
+      applyVolumeFaded(volume);
+      return;
+    }
+
+    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+
+    const durationMs = (crossfadeDuration || 2) * 1000;
+    const fadeSteps = 12;
+    const stepTime = Math.max(25, Math.floor((durationMs / 2) / fadeSteps));
+    let currentVol = volume;
+    const stepAmount = volume / fadeSteps;
+
+    // Phase 1: Smooth Fade-Out of outgoing track
+    fadeIntervalRef.current = setInterval(() => {
+      currentVol -= stepAmount;
+      if (currentVol <= 0) {
+        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        applyVolumeFaded(0);
+
+        // Phase 2: Load incoming track
+        loadTrackFn();
+
+        // Phase 3: Smooth Fade-In of incoming track
+        let fadeInVol = 0;
+        const fadeInStep = volume / fadeSteps;
+        fadeIntervalRef.current = setInterval(() => {
+          fadeInVol += fadeInStep;
+          if (fadeInVol >= volume) {
+            fadeInVol = volume;
+            if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+          }
+          applyVolumeFaded(fadeInVol);
+        }, stepTime);
+      } else {
+        applyVolumeFaded(currentVol);
+      }
+    }, stepTime);
+  };
+
+  // 3. Direct YouTube IFrame & Native Audio Engine Switcher with Crossfading
   useEffect(() => {
     if (!currentTrack) return;
 
@@ -166,7 +227,7 @@ export function YouTubeBridge() {
         return;
       }
 
-      // 2. Direct YouTube IFrame Player Engine (Sanitizes 11-char Video ID to prevent Error Code 2)
+      // 2. Direct YouTube IFrame Player Engine
       if (!isCancelled) {
         activeEngineRef.current = 'iframe';
         if (nativeAudioRef.current) nativeAudioRef.current.pause();
@@ -199,10 +260,15 @@ export function YouTubeBridge() {
       }
     };
 
-    loadTrackAudio();
+    crossfadeTrackChange(() => {
+      if (!isCancelled) {
+        loadTrackAudio();
+      }
+    });
 
     return () => {
       isCancelled = true;
+      if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
     };
   }, [currentTrack]);
 

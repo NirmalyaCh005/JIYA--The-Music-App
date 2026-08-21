@@ -95,6 +95,12 @@ export interface PlayerStoreState {
   setUser: (user: UserProfile | null) => void;
   addRecentlyPlayed: (track: Track) => void;
 
+  // Crossfading State & Actions
+  isCrossfadeEnabled: boolean;
+  crossfadeDuration: number;
+  toggleCrossfade: () => void;
+  setCrossfadeDuration: (seconds: number) => void;
+
   // YouTube Engine Actions
   setYtPlayer: (player: any) => void;
   setYtReady: (ready: boolean) => void;

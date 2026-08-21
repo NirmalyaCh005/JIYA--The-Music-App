@@ -15,6 +15,7 @@ import {
   Heart,
   ListMusic,
   Youtube,
+  Sparkles,
 } from 'lucide-react';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { usePlayerStore } from '@/lib/store/usePlayerStore';
@@ -38,8 +39,19 @@ export function PersistentPlayerBar() {
     seekToTime,
   } = useAudioPlayer();
 
-  const { isShuffle, repeatMode, isQueueDrawerOpen, likedTrackIds, theme, toggleQueueDrawer, toggleLikeTrack, toggleAmbientMode } =
-    usePlayerStore();
+  const {
+    isShuffle,
+    repeatMode,
+    isQueueDrawerOpen,
+    likedTrackIds,
+    theme,
+    isCrossfadeEnabled,
+    crossfadeDuration,
+    toggleQueueDrawer,
+    toggleLikeTrack,
+    toggleAmbientMode,
+    toggleCrossfade,
+  } = usePlayerStore();
 
   const [hoverSeekTime, setHoverSeekTime] = useState<number | null>(null);
   const isDark = theme === 'dark';
@@ -275,7 +287,20 @@ export function PersistentPlayerBar() {
       </div>
 
       {/* 3. Right Volume & Queue Controls (Desktop) */}
-      <div className="hidden lg:flex items-center gap-4 min-w-[200px] justify-end">
+      <div className="hidden lg:flex items-center gap-3 min-w-[220px] justify-end">
+        <button
+          onClick={toggleCrossfade}
+          className={`p-2 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold ${
+            isCrossfadeEnabled
+              ? 'bg-blue-600/20 text-blue-500 border border-blue-500/30'
+              : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+          title={isCrossfadeEnabled ? `Crossfade: ${crossfadeDuration}s Active` : 'Enable Crossfade'}
+        >
+          <Sparkles className="w-4.5 h-4.5" />
+          <span className="text-[10px] font-mono">{crossfadeDuration}s</span>
+        </button>
+
         <button
           onClick={() => toggleQueueDrawer()}
           className={`p-2 rounded-xl transition-colors ${
