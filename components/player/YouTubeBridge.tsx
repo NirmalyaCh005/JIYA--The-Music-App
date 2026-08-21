@@ -263,6 +263,8 @@ export function YouTubeBridge() {
           rel: 0,
           playsinline: 1,
           enablejsapi: 1,
+          iv_load_policy: 3,
+          cc_load_policy: 0,
           origin: currentOrigin,
           widget_referrer: currentOrigin,
         },
@@ -295,7 +297,7 @@ export function YouTubeBridge() {
 
     if (!window.YT) {
       const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
+      tag.src = 'https://www.youtube-nocookie.com/iframe_api';
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
       window.onYouTubeIframeAPIReady = initPlayer;
