@@ -19,6 +19,28 @@ JIYA is a modern, high-performance web & mobile music streaming platform powered
 
 ---
 
+## 🌐 Live Vercel Deployment Guide
+
+Deploy JIYA to Vercel in 2 minutes:
+
+### Step 1: Import Project to Vercel
+1. Go to [vercel.com/new](https://vercel.com/new).
+2. Connect your GitHub account and select repository: **`NirmalyaCh005/JIYA--The-Music-App`**.
+
+### Step 2: Environment Variables
+Add the following Environment Variables in Vercel settings:
+
+| Key | Value |
+| --- | --- |
+| `DATABASE_URL` | `file:./dev.db` |
+| `JWT_SECRET` | `jiya_super_secret_jwt_key_2026` |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | `YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com` |
+
+### Step 3: Deploy
+Click **Deploy**. Vercel will automatically build the project (`prisma generate && next build`) and generate your live global URL (e.g., `https://jiya-the-music-app.vercel.app`).
+
+---
+
 ## 🛠️ Tech Stack
 
 - **Framework**: Next.js 14 (App Router)
@@ -30,7 +52,7 @@ JIYA is a modern, high-performance web & mobile music streaming platform powered
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Local Getting Started
 
 ### 1. Prerequisites
 - Node.js 18+ 
@@ -41,8 +63,8 @@ JIYA is a modern, high-performance web & mobile music streaming platform powered
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/jiya-music-app.git
-cd jiya-music-app
+git clone https://github.com/NirmalyaCh005/JIYA--The-Music-App.git
+cd JIYA--The-Music-App
 npm install
 ```
 
