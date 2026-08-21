@@ -174,7 +174,9 @@ export function YouTubeBridge() {
         const cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId);
 
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-        if (player) {
+        const isReady = usePlayerStore.getState().isYtReady;
+
+        if (player && isReady) {
           try {
             if (cleanYtId) {
               if (typeof player.loadVideoById === 'function') {
@@ -218,7 +220,8 @@ export function YouTubeBridge() {
       }
     } else {
       const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-      if (player && typeof player.getPlayerState === 'function') {
+      const isReady = usePlayerStore.getState().isYtReady;
+      if (player && isReady && typeof player.getPlayerState === 'function') {
         try {
           player.setVolume(isMuted ? 0 : volume * 100);
           const state = player.getPlayerState();
@@ -244,10 +247,13 @@ export function YouTubeBridge() {
       if (!window.YT || !window.YT.Player) return;
       if (playerRef.current) return;
 
+      const currentOrigin = window.location.origin;
+
       playerRef.current = new window.YT.Player('jiya-yt-player', {
         height: '1',
         width: '1',
         videoId: sanitizeYouTubeId(currentTrack?.youtubeId) || '',
+        host: 'https://www.youtube-nocookie.com',
         playerVars: {
           autoplay: 0,
           controls: 0,
@@ -256,12 +262,17 @@ export function YouTubeBridge() {
           modestbranding: 1,
           rel: 0,
           playsinline: 1,
+          enablejsapi: 1,
+          origin: currentOrigin,
+          widget_referrer: currentOrigin,
         },
         events: {
           onReady: (event: any) => {
             setYtReady(true);
             setYtPlayer(event.target);
-            event.target.setVolume(isMuted ? 0 : volume * 100);
+            try {
+              event.target.setVolume(isMuted ? 0 : volume * 100);
+            } catch (err) {}
           },
           onStateChange: (event: any) => {
             if (activeEngineRef.current === 'iframe') {
