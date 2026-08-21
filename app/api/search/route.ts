@@ -81,17 +81,22 @@ async function searchSpotifyOfficialApi(query: string, clientId: string, clientS
   }
 }
 
-// 2. Official YouTube Data API v3 Search
+// 2. Official YouTube Data API v3 Search (With Automatic Zero-Quota Scraper Fallback)
 async function searchYouTubeOfficialApi(query: string, apiKey: string): Promise<any[]> {
   try {
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=12&q=${encodeURIComponent(
       query
     )}&key=${apiKey}`;
     const res = await fetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn('YouTube API Quota Limit Exceeded (403), using direct scraper fallback');
+      return searchYouTubeDirect(query);
+    }
 
     const data = await res.json();
-    if (!data.items || !Array.isArray(data.items)) return [];
+    if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
+      return searchYouTubeDirect(query);
+    }
 
     return data.items.map((item: any) => ({
       id: `yt-api-${item.id?.videoId || Math.random()}`,
@@ -110,7 +115,7 @@ async function searchYouTubeOfficialApi(query: string, apiKey: string): Promise<
       coverUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url,
     }));
   } catch (e) {
-    return [];
+    return searchYouTubeDirect(query);
   }
 }
 

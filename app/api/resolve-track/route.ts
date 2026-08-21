@@ -37,6 +37,45 @@ const KNOWN_YOUTUBE_MAPPINGS: Record<string, string> = {
   'lofi': 'jfKfPfyJRdk',
 };
 
+async function searchYouTubeScraper(query: string): Promise<string | null> {
+  try {
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' song')}`;
+    const res = await fetch(searchUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      next: { revalidate: 3600 },
+    });
+
+    if (!res.ok) return null;
+
+    const html = await res.text();
+    const match = html.match(/var ytInitialData = ({.*?});<\/script>/);
+    if (!match) return null;
+
+    const data = JSON.parse(match[1]);
+    const contents =
+      data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+
+    if (contents && Array.isArray(contents)) {
+      for (const section of contents) {
+        const itemSection = section.itemSectionRenderer?.contents;
+        if (itemSection && Array.isArray(itemSection)) {
+          for (const item of itemSection) {
+            const vr = item.videoRenderer;
+            if (vr && vr.videoId) {
+              return vr.videoId;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {}
+  return null;
+}
+
 async function searchPipedApi(query: string): Promise<string | null> {
   try {
     const res = await fetch(`https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(query)}&filter=music_songs`, {
@@ -96,10 +135,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(result);
     }
 
-    // 3. Try Piped API
-    let youtubeId = await searchPipedApi(query);
+    // 3. Direct Zero-Quota YouTube Scraper Engine
+    let youtubeId = await searchYouTubeScraper(query);
 
-    // 4. Deterministic Pool Fallback
+    // 4. Try Piped API
+    if (!youtubeId) {
+      youtubeId = await searchPipedApi(query);
+    }
+
+    // 5. Deterministic Pool Fallback
     if (!youtubeId) {
       const pool = [
         '4NRXx6U8ABQ', // Blinding Lights
