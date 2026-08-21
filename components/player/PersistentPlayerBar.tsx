@@ -135,8 +135,20 @@ export function PersistentPlayerBar() {
         )}
       </div>
 
-      {/* Mobile Play/Pause & Mute/Unmute Controls */}
-      <div className="flex lg:hidden items-center gap-2">
+      {/* Mobile Play/Pause & Mute/Unmute & Queue Controls */}
+      <div className="flex lg:hidden items-center gap-1.5 sm:gap-2">
+        <button
+          onClick={() => toggleQueueDrawer()}
+          className={`p-1.5 rounded-xl transition-colors ${
+            isQueueDrawerOpen
+              ? 'bg-blue-600/20 text-blue-500 border border-blue-500/30'
+              : 'text-slate-400 hover:text-white'
+          }`}
+          title="Play Queue"
+        >
+          <ListMusic className="w-4 h-4" />
+        </button>
+
         <button
           onClick={toggleMute}
           className={`p-1.5 rounded-full transition-colors ${
