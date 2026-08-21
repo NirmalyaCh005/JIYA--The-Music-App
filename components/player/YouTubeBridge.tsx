@@ -44,7 +44,6 @@ export function YouTubeBridge() {
     if (!nativeAudioRef.current) {
       const audio = new Audio();
       audio.preload = 'auto';
-      audio.crossOrigin = 'anonymous';
       nativeAudioRef.current = audio;
 
       audio.onplay = () => {
@@ -66,7 +65,22 @@ export function YouTubeBridge() {
         }
       };
       audio.onerror = (e) => {
-        console.warn('Native HTML5 Audio error, falling back to YouTube IFrame:', e);
+        console.warn('Native HTML5 Audio error, attempting streaming proxy or YouTube fallback:', e);
+        const track = usePlayerStore.getState().currentTrack;
+
+        if (track && track.audioUrl && !track.audioUrl.startsWith('/api/stream/audio')) {
+          const proxyUrl = `/api/stream/audio?url=${encodeURIComponent(track.audioUrl)}`;
+          audio.src = proxyUrl;
+          audio.play().catch(() => {
+            activeEngineRef.current = 'iframe';
+            const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+            if (player && typeof player.playVideo === 'function') {
+              player.playVideo();
+            }
+          });
+          return;
+        }
+
         activeEngineRef.current = 'iframe';
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
         if (player && typeof player.playVideo === 'function') {
