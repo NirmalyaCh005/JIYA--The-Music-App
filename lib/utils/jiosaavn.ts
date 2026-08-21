@@ -23,7 +23,7 @@ function upgradeCoverUrl(url: string | null | undefined): string {
     .replace('http://', 'https://');
 }
 
-// Map raw JioSaavn API song object to clean app Track object
+// Map raw JioSaavn API song object to clean app Track object with FULL-LENGTH 320kbps / 160kbps audioUrl
 export function mapJioSaavnSongToTrack(item: any): Track {
   const title = cleanText(item.song || item.name || item.title || 'Untitled Track');
   const artist = cleanText(
@@ -38,20 +38,35 @@ export function mapJioSaavnSongToTrack(item: any): Track {
   );
 
   const duration = item.duration ? Number(item.duration) : 210;
-  const coverUrl = upgradeCoverUrl(item.image || item.coverUrl);
+  
+  let rawCover = item.image;
+  if (Array.isArray(item.image)) {
+    rawCover = item.image[2]?.link || item.image[2]?.url || item.image[1]?.link || item.image[0]?.link || item.image[0]?.url;
+  }
+  const coverUrl = upgradeCoverUrl(rawCover || item.coverUrl);
 
-  // Extract direct streaming MP3 / AAC URL
-  let audioUrl: string | null = null;
+  // Extract FULL-LENGTH audio URL from downloadUrl (downloadUrl[4] = 320kbps, downloadUrl[3] = 160kbps)
+  let fullAudioUrl: string | null = null;
+  const dUrls = item.downloadUrl || item.download_url;
 
-  if (item.vlink && typeof item.vlink === 'string' && item.vlink.startsWith('http')) {
-    audioUrl = item.vlink;
-  } else if (item.media_preview_url && typeof item.media_preview_url === 'string') {
-    audioUrl = item.media_preview_url.replace('http://', 'https://');
-  } else if (Array.isArray(item.downloadUrl) && item.downloadUrl.length > 0) {
-    const highest = item.downloadUrl.slice(-1)[0];
-    audioUrl = highest?.link || item.downloadUrl[0]?.link || null;
-  } else if (typeof item.downloadUrl === 'string') {
-    audioUrl = item.downloadUrl;
+  if (Array.isArray(dUrls) && dUrls.length > 0) {
+    fullAudioUrl =
+      dUrls[4]?.url ||
+      dUrls[4]?.link ||
+      dUrls[3]?.url ||
+      dUrls[3]?.link ||
+      dUrls[dUrls.length - 1]?.url ||
+      dUrls[dUrls.length - 1]?.link ||
+      dUrls[0]?.url ||
+      dUrls[0]?.link ||
+      null;
+  } else if (typeof dUrls === 'string') {
+    fullAudioUrl = dUrls;
+  }
+
+  // Ensure we NEVER select preview or jiotunepreview
+  if (fullAudioUrl && (fullAudioUrl.includes('jiotunepreview.jio.com') || fullAudioUrl.includes('_96_p.mp4'))) {
+    fullAudioUrl = null;
   }
 
   return {
@@ -62,39 +77,46 @@ export function mapJioSaavnSongToTrack(item: any): Track {
     genre: item.language ? `${item.language.toUpperCase()} Music` : 'JioSaavn Music',
     duration,
     coverUrl,
-    audioUrl,
+    audioUrl: fullAudioUrl,
     youtubeId: item.youtubeId || null,
   };
 }
 
-// 1. Unified Search Songs via JioSaavn API
-export async function searchJioSaavnSongs(query: string, limit: number = 20): Promise<Track[]> {
-  try {
-    const searchUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&p=1&n=${limit}&q=${encodeURIComponent(
-      query
-    )}`;
+// 1. Unified Search Songs via JioSaavn API Endpoints
+export async function searchJioSaavnSongs(query: string, limit: number = 25): Promise<Track[]> {
+  const endpoints = [
+    `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`,
+    `https://jiosaavn-api-privatecvc2.vercel.app/search?query=${encodeURIComponent(query)}`,
+    `https://saavn.me/api/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`,
+    `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&p=1&n=${limit}&q=${encodeURIComponent(query)}`,
+  ];
 
-    const res = await fetch(searchUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      next: { revalidate: 3600 },
-    });
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        next: { revalidate: 3600 },
+      });
 
-    if (!res.ok) return [];
+      if (!res.ok) continue;
 
-    const data = await res.json();
-    const results = data?.results;
+      const data = await res.json();
+      const results = data?.data?.results || data?.results || data;
 
-    if (!results || !Array.isArray(results)) return [];
-
-    return results.map(mapJioSaavnSongToTrack);
-  } catch (err) {
-    console.warn('JioSaavn search error:', err);
-    return [];
+      if (results && Array.isArray(results) && results.length > 0) {
+        const mapped = results.map(mapJioSaavnSongToTrack);
+        if (mapped.some((t) => t.audioUrl)) return mapped;
+      }
+    } catch (err) {
+      // Try next endpoint
+    }
   }
+
+  return [];
 }
 
 // 2. Fetch Featured Trending Playlists / Charts
@@ -114,7 +136,6 @@ export async function getJioSaavnTrendingCharts(): Promise<{ id: string; title: 
     const data = await res.json();
     if (!Array.isArray(data)) return [];
 
-    // Fetch songs for top 3 playlists
     const chartPromises = data.slice(0, 4).map(async (playlistItem: any) => {
       const listId = playlistItem.listid;
       const title = cleanText(playlistItem.listname || playlistItem.title || 'Trending Charts');

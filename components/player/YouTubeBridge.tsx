@@ -230,7 +230,7 @@ export function YouTubeBridge() {
           activeEngineRef.current = 'native';
           if (nativeAudioRef.current) {
             const finalSrc = currentTrack.audioUrl.startsWith('http')
-              ? `/api/stream/audio?url=${encodeURIComponent(currentTrack.audioUrl)}`
+              ? `/api/stream?url=${encodeURIComponent(currentTrack.audioUrl)}`
               : currentTrack.audioUrl;
             nativeAudioRef.current.src = finalSrc;
             nativeAudioRef.current.volume = isMuted ? 0 : volume;
