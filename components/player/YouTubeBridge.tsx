@@ -232,26 +232,34 @@ export function YouTubeBridge() {
         activeEngineRef.current = 'iframe';
         if (nativeAudioRef.current) nativeAudioRef.current.pause();
 
-        const cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId);
+        let cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId);
+
+        if (!cleanYtId && !currentTrack.audioUrl) {
+          try {
+            const res = await fetch(
+              `/api/resolve-track?q=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data.youtubeId) {
+                cleanYtId = sanitizeYouTubeId(data.youtubeId);
+              }
+            }
+          } catch (e) {}
+        }
+
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
 
-        if (player) {
+        if (player && cleanYtId) {
           try {
-            if (cleanYtId && typeof player.loadVideoById === 'function') {
+            if (typeof player.loadVideoById === 'function') {
               player.loadVideoById({
                 videoId: cleanYtId,
                 startSeconds: 0,
               });
-              if (isPlayingRef.current && typeof player.playVideo === 'function') {
+              if (typeof player.playVideo === 'function') {
                 try { player.playVideo(); } catch (err) {}
               }
-            } else if (typeof player.loadPlaylist === 'function') {
-              player.loadPlaylist({
-                listType: 'search',
-                list: `${currentTrack.title} ${currentTrack.artist}`,
-                index: 0,
-                startSeconds: 0,
-              });
             }
           } catch (e) {
             console.warn('Error loading video into YouTube IFrame:', e);
@@ -338,29 +346,36 @@ export function YouTubeBridge() {
               event.target.setVolume(isMuted ? 0 : volume * 100);
             } catch (err) {}
 
-            // Immediately load active track when player becomes ready
+            // Immediately resolve & load active track when player becomes ready
             const track = usePlayerStore.getState().currentTrack;
-            const isPlayingNow = usePlayerStore.getState().isPlaying;
             if (track && !track.audioUrl) {
-              const cleanYtId = sanitizeYouTubeId(track.youtubeId);
-              try {
-                if (cleanYtId && typeof event.target.loadVideoById === 'function') {
-                  event.target.loadVideoById({
-                    videoId: cleanYtId,
-                    startSeconds: 0,
-                  });
-                  if (isPlayingNow && typeof event.target.playVideo === 'function') {
-                    event.target.playVideo();
-                  }
-                } else if (typeof event.target.loadPlaylist === 'function') {
-                  event.target.loadPlaylist({
-                    listType: 'search',
-                    list: `${track.title} ${track.artist}`,
-                    index: 0,
-                    startSeconds: 0,
-                  });
+              const loadReadyTrack = async () => {
+                let cleanYtId = sanitizeYouTubeId(track.youtubeId);
+                if (!cleanYtId) {
+                  try {
+                    const res = await fetch(
+                      `/api/resolve-track?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`
+                    );
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.youtubeId) cleanYtId = sanitizeYouTubeId(data.youtubeId);
+                    }
+                  } catch (e) {}
                 }
-              } catch (err) {}
+
+                if (cleanYtId && typeof event.target.loadVideoById === 'function') {
+                  try {
+                    event.target.loadVideoById({
+                      videoId: cleanYtId,
+                      startSeconds: 0,
+                    });
+                    if (typeof event.target.playVideo === 'function') {
+                      event.target.playVideo();
+                    }
+                  } catch (err) {}
+                }
+              };
+              loadReadyTrack();
             }
           },
           onStateChange: (event: any) => {
