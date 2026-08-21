@@ -1,43 +1,36 @@
-# 🎵 JIYA - High-Fidelity Music Streaming Engine
+# 🎵 JIYA - High-Fidelity Music Streaming Platform
 
-> **Made with ❤️ by Nirmalya Chowdhury**
+> **Designed & Developed with ❤️ by Nirmalya Chowdhury**
 
-JIYA is a modern, high-performance web & mobile music streaming platform powered by Next.js 14, React 18, Tailwind CSS, TypeScript, Prisma SQLite, and the YouTube IFrame Audio Engine.
+[![Live App](https://img.shields.io/badge/Live%20Demo-https%3A%2F%2Fjiya--kappa.vercel.app%2F-blue?style=for-the-badge&logo=vercel)](https://jiya-kappa.vercel.app/)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-NirmalyaCh005%2FJIYA--The--Music--App-purple?style=for-the-badge&logo=github)](https://github.com/NirmalyaCh005/JIYA--The-Music-App)
+
+JIYA is a modern, state-of-the-art music streaming web & mobile application built with Next.js 14, React 18, Tailwind CSS, TypeScript, Prisma SQLite, and the YouTube IFrame Audio Engine.
 
 ---
 
-## ✨ Features
+## 🌐 Live Production Link
 
-- **🎧 Lossless Audio Streaming Engine**: Instant playback powered by YouTube Audio Engine.
-- **📱 Fully Responsive Mobile App UI**: Floating persistent player bar, bottom navigation bar with 5 quick-access tabs, and React Portal mobile menu drawer.
-- **🔐 Secure Authentication**: Multi-channel login supporting SMS OTP verification, Email OTP, and Google Cloud Sign-In.
-- **💾 Database State Persistence**: Built-in Prisma SQLite database storing user profiles, custom playlists, track uploads, and liked songs.
-- **📈 2026 YouTube Music Top Charts**: Live 2026 charts categorizing Global Top 50, India Trending, Punjabi Hits, and Lofi Chill soundscapes.
-- **🌌 Ambient Visualizer Mode**: Immersive full-screen visualizer modal with dynamic audio reactive background.
-- **❤️ Real-time Liked Songs**: 1-tap heart icon sync across all tracks, updated instantly in Liked Songs collection.
+🔗 **Global Live Deployment**: [https://jiya-kappa.vercel.app/](https://jiya-kappa.vercel.app/)  
+📁 **GitHub Repository**: [https://github.com/NirmalyaCh005/JIYA--The-Music-App](https://github.com/NirmalyaCh005/JIYA--The-Music-App)
+
+---
+
+## ✨ Full Feature Overview
+
+- **🎧 Universal Audio Streaming Engine**: Instant playback powered by YouTube IFrame API & Client-Side Search Resolution. Play **any song in the world** directly inside the app!
+- **🔎 Interactive Live Search Dropdown**: Real-time Spotify, YouTube Music, and iTunes search dropdown popover with 1-click audio playback.
+- **📱 Native Mobile App UI**:
+  - Floating mini-player capsule card (`bottom-[72px]`).
+  - Bottom navigation bar with 5 quick-access tabs (`Home 🏠`, `Explore 🧭`, `Charts 📈`, `Library 📚`, `Liked ❤️`).
+  - React Portal full-screen mobile menu drawer (`100% opaque`).
+- **🔐 Mandatory Security & Auth**: Multi-channel authentication supporting SMS OTP, Email OTP, and Google Cloud Sign-In with strict session reload protection on `/login`.
+- **💾 Prisma SQLite Database Persistence**: Store user accounts, custom playlists, track uploads, and liked songs in `dev.db`.
+- **📈 2026 YouTube Music Top Charts Hub**: Live 2026 charts categorizing Global Top 50, India Trending, Punjabi Hits, and Lofi Chill soundscapes.
+- **🌌 Ambient Visualizer Mode**: Full-screen dynamic audio reactive modal.
+- **❤️ Real-time Liked Songs Sync**: 1-tap heart icon sync across all tracks, updated instantly in Liked Songs.
 - **☁️ Custom Song Uploads**: Drag-and-drop file uploader supporting MP3, WAV, and AAC formats.
-
----
-
-## 🌐 Live Vercel Deployment Guide
-
-Deploy JIYA to Vercel in 2 minutes:
-
-### Step 1: Import Project to Vercel
-1. Go to [vercel.com/new](https://vercel.com/new).
-2. Connect your GitHub account and select repository: **`NirmalyaCh005/JIYA--The-Music-App`**.
-
-### Step 2: Environment Variables
-Add the following Environment Variables in Vercel settings:
-
-| Key | Value |
-| --- | --- |
-| `DATABASE_URL` | `file:./dev.db` |
-| `JWT_SECRET` | `jiya_super_secret_jwt_key_2026` |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | `YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com` |
-
-### Step 3: Deploy
-Click **Deploy**. Vercel will automatically build the project (`prisma generate && next build`) and generate your live global URL (e.g., `https://jiya-the-music-app.vercel.app`).
+- **⚖️ Minimalist Footer**: Clean developer credit (`Made with ❤️ by Nirmalya Chowdhury`) & copyright notice.
 
 ---
 
@@ -47,48 +40,41 @@ Click **Deploy**. Vercel will automatically build the project (`prisma generate 
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS & Lucide Icons
 - **State Management**: Zustand with `persist` local storage
-- **Database**: Prisma ORM with SQLite (`dev.db`)
+- **Database & ORM**: Prisma with SQLite (`dev.db`)
 - **Player API**: YouTube IFrame Player API
+- **External Metadata APIs**: Spotify Web API & iTunes Search API
 
 ---
 
-## 🚀 Local Getting Started
+## 🚀 Environment Variables Setup
 
-### 1. Prerequisites
-- Node.js 18+ 
-- npm or pnpm
-
-### 2. Installation
-
-Clone the repository and install dependencies:
-
-```bash
-git clone https://github.com/NirmalyaCh005/JIYA--The-Music-App.git
-cd JIYA--The-Music-App
-npm install
-```
-
-### 3. Setup Environment Variables
-
-Create a `.env` file in the root directory:
+When deploying to Vercel or running locally, set the following environment variables:
 
 ```env
 DATABASE_URL="file:./dev.db"
-JWT_SECRET="jiya_super_secret_jwt_key_2026"
+JWT_SECRET="jiya_super_secret_jwt_key_2026_production"
+YOUTUBE_API_KEY="YOUR_YOUTUBE_DATA_API_V3_KEY"
+SPOTIFY_CLIENT_ID="YOUR_SPOTIFY_CLIENT_ID"
+SPOTIFY_CLIENT_SECRET="YOUR_SPOTIFY_CLIENT_SECRET"
 NEXT_PUBLIC_GOOGLE_CLIENT_ID="YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
 ```
 
-### 4. Initialize Database
+---
 
-Run Prisma migrations/db push to create the SQLite database:
+## 💻 Local Development Setup
 
 ```bash
+# 1. Clone the repository
+git clone https://github.com/NirmalyaCh005/JIYA--The-Music-App.git
+cd JIYA--The-Music-App
+
+# 2. Install dependencies
+npm install
+
+# 3. Setup SQLite Database
 npx prisma db push
-```
 
-### 5. Start Development Server
-
-```bash
+# 4. Start Development Server
 npm run dev
 ```
 
@@ -96,11 +82,11 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 📂 Project Structure
+## 📂 Project Architecture
 
 ```text
 ├── app/
-│   ├── api/             # Next.js API Routes (Auth OTP, Playlists, Tracks)
+│   ├── api/             # Next.js API Routes (Auth OTP, Search, Resolve Track, Playlists, Tracks)
 │   ├── charts/          # 2026 Top Charts Page
 │   ├── explore/         # Genre Explorer Page
 │   ├── liked/           # Liked Songs Page
@@ -112,18 +98,19 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   ├── player/          # PersistentPlayerBar, YouTubeBridge, AmbientVisualizerModal
 │   └── tracks/          # TrackTable, TrackRow
 ├── lib/
-│   ├── auth/            # In-Memory/Global OTP Store & Token utils
+│   ├── auth/            # In-Memory & Global OTP Store
 │   ├── constants/       # Featured 2026 Track Datasets
 │   ├── store/           # Zustand Audio Player Store
-│   └── utils/           # Time & Helper Utilities
+│   └── utils/           # Time & Format Utilities
 ├── prisma/
-│   └── schema.prisma    # Database Models (User, Track, Playlist, LikedTrack)
+│   └── schema.prisma    # Database Schema (User, Track, Playlist, LikedTrack)
 └── public/
     └── uploads/         # Local Music Upload Storage
 ```
 
 ---
 
-## 📜 License
+## 📜 License & Credit
 
-Created with ❤️ by **Nirmalya Chowdhury**. All rights reserved © 2026.
+Designed & Developed with ❤️ by **Nirmalya Chowdhury**.  
+All rights reserved © 2026 **JIYA Music Engine**.
