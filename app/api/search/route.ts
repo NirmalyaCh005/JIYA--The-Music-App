@@ -112,6 +112,12 @@ async function searchiTunes(query: string): Promise<any[]> {
         ? item.artworkUrl100.replace('100x100bb', '600x600bb')
         : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80';
 
+      const localMatch = ALL_INITIAL_TRACKS.find(
+        (t) =>
+          t.title.toLowerCase().includes(item.trackName.toLowerCase()) ||
+          item.trackName.toLowerCase().includes(t.title.toLowerCase())
+      );
+
       return {
         id: `itunes-${item.trackId}`,
         title: item.trackName,
@@ -119,7 +125,7 @@ async function searchiTunes(query: string): Promise<any[]> {
         album: item.collectionName || 'Single',
         genre: item.primaryGenreName || 'Music',
         duration: Math.round(item.trackTimeMillis / 1000) || 210,
-        youtubeId: null, // Will resolve dynamically when played
+        youtubeId: localMatch ? localMatch.youtubeId : null,
         coverUrl,
       };
     });

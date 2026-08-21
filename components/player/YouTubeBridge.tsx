@@ -93,19 +93,17 @@ export function YouTubeBridge() {
     const player = playerRef.current;
     if (!player || !currentTrack) return;
 
-    if (currentTrack.youtubeId) {
-      try {
-        const currentVidId = player.getVideoData ? player.getVideoData().video_id : null;
-        if (currentVidId !== currentTrack.youtubeId) {
-          player.loadVideoById({
-            videoId: currentTrack.youtubeId,
-            startSeconds: 0,
-          });
-          setPlaying(true);
-        }
-      } catch (e) {
-        console.warn('Error loading video by ID:', e);
+    const targetVidId = currentTrack.youtubeId || 'BddP6PYo2gs';
+    try {
+      if (typeof player.loadVideoById === 'function') {
+        player.loadVideoById({
+          videoId: targetVidId,
+          startSeconds: 0,
+        });
+        setPlaying(true);
       }
+    } catch (e) {
+      console.warn('Error loading video by ID:', e);
     }
   }, [currentTrack]);
 
