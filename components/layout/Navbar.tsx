@@ -19,9 +19,12 @@ import {
   LogOut,
   User,
   Menu,
-  Heart,
+  Play,
+  Loader2,
+  Music,
 } from 'lucide-react';
 import { usePlayerStore } from '@/lib/store/usePlayerStore';
+import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
 
 interface NavbarProps {
@@ -49,10 +52,36 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
   const { theme, toggleTheme, toggleUploadModal, user, setUser } = usePlayerStore();
   const isDark = theme === 'dark';
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+
+  const { playTrack } = useAudioPlayer();
+
+  const handleSearchChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearchQuery(val);
     if (onSearch) onSearch(val);
+
+    if (!val.trim()) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    setShowSearchDropdown(true);
+    setIsSearching(true);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(val)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const navPills = [
@@ -191,6 +220,7 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
             type="text"
             value={searchQuery}
             onChange={handleSearchChange}
+            onFocus={() => searchQuery.trim() && setShowSearchDropdown(true)}
             placeholder="Search songs..."
             className={`w-full pl-9 pr-3 py-2 sm:py-2.5 rounded-full text-xs font-medium transition-all ${
               isDark
@@ -198,6 +228,75 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
                 : 'bg-slate-100 border border-slate-200 text-slate-800 placeholder-slate-400 focus:border-blue-500 shadow-sm'
             }`}
           />
+
+          {/* Interactive Live Search Results Dropdown */}
+          {showSearchDropdown && (
+            <div
+              className={`absolute left-0 right-0 mt-2 rounded-2xl border shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-80 overflow-y-auto custom-scrollbar ${
+                isDark
+                  ? 'bg-[#0E1420] border-white/15 text-white'
+                  : 'bg-white border-slate-200 text-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between px-2 pb-2 border-b border-white/10 mb-2">
+                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  Live Search Results ({searchResults.length})
+                </span>
+                <button
+                  onClick={() => setShowSearchDropdown(false)}
+                  className="text-slate-400 hover:text-white text-xs p-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {isSearching ? (
+                <div className="py-6 text-center text-slate-400 flex items-center justify-center gap-2 text-xs font-bold">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                  <span>Searching music database...</span>
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="py-6 text-center text-slate-400 text-xs font-medium">
+                  No matching tracks found for "{searchQuery}"
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {searchResults.map((track) => (
+                    <div
+                      key={track.id}
+                      onClick={() => {
+                        playTrack(track);
+                        setShowSearchDropdown(false);
+                      }}
+                      className="p-2 rounded-xl hover:bg-blue-600/15 border border-transparent hover:border-blue-500/20 flex items-center justify-between gap-3 cursor-pointer transition-all group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-white/10 bg-slate-950 shrink-0">
+                          <img
+                            src={track.coverUrl || '/samples/covers/cyberpunk.jpg'}
+                            alt={track.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-extrabold truncate group-hover:text-blue-400">
+                            {track.title}
+                          </p>
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                            {track.artist}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center shadow hover:scale-110 active:scale-95 transition-all shrink-0">
+                        <Play className="w-3.5 h-3.5 fill-white ml-0.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
