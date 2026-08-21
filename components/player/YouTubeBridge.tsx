@@ -33,7 +33,6 @@ export function YouTubeBridge() {
 
     const initPlayer = () => {
       if (!window.YT || !window.YT.Player) return;
-
       if (playerRef.current) return;
 
       playerRef.current = new window.YT.Player('jiya-yt-player', {
@@ -41,7 +40,7 @@ export function YouTubeBridge() {
         width: '1',
         videoId: currentTrack?.youtubeId || 'BddP6PYo2gs',
         playerVars: {
-          autoplay: 0,
+          autoplay: 1,
           controls: 0,
           disablekb: 1,
           fs: 0,
@@ -54,6 +53,22 @@ export function YouTubeBridge() {
             setYtReady(true);
             setYtPlayer(event.target);
             event.target.setVolume(isMuted ? 0 : volume * 100);
+
+            if (currentTrack) {
+              if (currentTrack.youtubeId) {
+                event.target.loadVideoById({
+                  videoId: currentTrack.youtubeId,
+                  startSeconds: 0,
+                });
+              } else if (typeof event.target.loadPlaylist === 'function') {
+                event.target.loadPlaylist({
+                  listType: 'search',
+                  list: `${currentTrack.title} ${currentTrack.artist}`,
+                  index: 0,
+                  startSeconds: 0,
+                });
+              }
+            }
           },
           onStateChange: (event: any) => {
             // YT.PlayerState: UNSTARTED (-1), ENDED (0), PLAYING (1), PAUSED (2), BUFFERING (3)
@@ -67,8 +82,7 @@ export function YouTubeBridge() {
             }
           },
           onError: (err: any) => {
-            console.warn('YouTube Player Error:', err);
-            // Skip broken video on error after brief delay
+            console.warn('YouTube Player Error, playing next track:', err);
             setTimeout(() => {
               playNext();
             }, 1000);
@@ -88,39 +102,51 @@ export function YouTubeBridge() {
     }
   }, []);
 
-  // 2. Load New Track Video on Track Change
+  // 2. Dynamic Universal Track Switcher (Handles direct Video ID OR Client-side YouTube Search Resolution)
   useEffect(() => {
-    const player = playerRef.current;
+    const player = playerRef.current || usePlayerStore.getState().ytPlayer;
     if (!player || !currentTrack) return;
 
-    const targetVidId = currentTrack.youtubeId || 'BddP6PYo2gs';
     try {
-      if (typeof player.loadVideoById === 'function') {
-        player.loadVideoById({
-          videoId: targetVidId,
-          startSeconds: 0,
-        });
-        setPlaying(true);
+      if (currentTrack.youtubeId) {
+        if (typeof player.loadVideoById === 'function') {
+          player.loadVideoById({
+            videoId: currentTrack.youtubeId,
+            startSeconds: 0,
+          });
+          setPlaying(true);
+        }
+      } else {
+        // Universal client-side YouTube search resolution for ANY song worldwide
+        if (typeof player.loadPlaylist === 'function') {
+          player.loadPlaylist({
+            listType: 'search',
+            list: `${currentTrack.title} ${currentTrack.artist}`,
+            index: 0,
+            startSeconds: 0,
+          });
+          setPlaying(true);
+        }
       }
     } catch (e) {
-      console.warn('Error loading video by ID:', e);
+      console.warn('Error switching track in YouTubeBridge:', e);
     }
   }, [currentTrack]);
 
   // 3. Sync Play / Pause State with YT Player
   useEffect(() => {
-    const player = playerRef.current;
+    const player = playerRef.current || usePlayerStore.getState().ytPlayer;
     if (!player || typeof player.getPlayerState !== 'function') return;
 
     try {
       const state = player.getPlayerState();
       if (isPlaying) {
         if (state !== 1 && state !== 3) {
-          player.playVideo();
+          if (typeof player.playVideo === 'function') player.playVideo();
         }
       } else {
         if (state === 1 || state === 3) {
-          player.pauseVideo();
+          if (typeof player.pauseVideo === 'function') player.pauseVideo();
         }
       }
     } catch (e) {
@@ -131,7 +157,7 @@ export function YouTubeBridge() {
   // 4. Progress Bar Sync Interval (Poll current time every 250ms)
   useEffect(() => {
     const interval = setInterval(() => {
-      const player = playerRef.current;
+      const player = playerRef.current || usePlayerStore.getState().ytPlayer;
       if (!player || typeof player.getCurrentTime !== 'function') return;
 
       try {
@@ -143,7 +169,7 @@ export function YouTubeBridge() {
           setDuration(dur);
         }
       } catch (e) {
-        // Player not ready yet
+        // Player initializing
       }
     }, 250);
 
