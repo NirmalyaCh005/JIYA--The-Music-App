@@ -172,28 +172,25 @@ export function YouTubeBridge() {
         if (nativeAudioRef.current) nativeAudioRef.current.pause();
 
         const cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId);
-
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-        const isReady = usePlayerStore.getState().isYtReady;
 
-        if (player && isReady) {
+        if (player) {
           try {
-            if (cleanYtId) {
-              if (typeof player.loadVideoById === 'function') {
-                player.loadVideoById({
-                  videoId: cleanYtId,
-                  startSeconds: 0,
-                });
+            if (cleanYtId && typeof player.loadVideoById === 'function') {
+              player.loadVideoById({
+                videoId: cleanYtId,
+                startSeconds: 0,
+              });
+              if (isPlayingRef.current && typeof player.playVideo === 'function') {
+                try { player.playVideo(); } catch (err) {}
               }
-            } else {
-              if (typeof player.loadPlaylist === 'function') {
-                player.loadPlaylist({
-                  listType: 'search',
-                  list: `${currentTrack.title} ${currentTrack.artist}`,
-                  index: 0,
-                  startSeconds: 0,
-                });
-              }
+            } else if (typeof player.loadPlaylist === 'function') {
+              player.loadPlaylist({
+                listType: 'search',
+                list: `${currentTrack.title} ${currentTrack.artist}`,
+                index: 0,
+                startSeconds: 0,
+              });
             }
           } catch (e) {
             console.warn('Error loading video into YouTube IFrame:', e);
@@ -220,8 +217,7 @@ export function YouTubeBridge() {
       }
     } else {
       const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-      const isReady = usePlayerStore.getState().isYtReady;
-      if (player && isReady && typeof player.getPlayerState === 'function') {
+      if (player && typeof player.getPlayerState === 'function') {
         try {
           player.setVolume(isMuted ? 0 : volume * 100);
           const state = player.getPlayerState();
@@ -255,7 +251,7 @@ export function YouTubeBridge() {
         videoId: sanitizeYouTubeId(currentTrack?.youtubeId) || '',
         host: 'https://www.youtube-nocookie.com',
         playerVars: {
-          autoplay: 0,
+          autoplay: 1,
           controls: 0,
           disablekb: 1,
           fs: 0,
@@ -275,6 +271,31 @@ export function YouTubeBridge() {
             try {
               event.target.setVolume(isMuted ? 0 : volume * 100);
             } catch (err) {}
+
+            // Immediately load active track when player becomes ready
+            const track = usePlayerStore.getState().currentTrack;
+            const isPlayingNow = usePlayerStore.getState().isPlaying;
+            if (track && !track.audioUrl) {
+              const cleanYtId = sanitizeYouTubeId(track.youtubeId);
+              try {
+                if (cleanYtId && typeof event.target.loadVideoById === 'function') {
+                  event.target.loadVideoById({
+                    videoId: cleanYtId,
+                    startSeconds: 0,
+                  });
+                  if (isPlayingNow && typeof event.target.playVideo === 'function') {
+                    event.target.playVideo();
+                  }
+                } else if (typeof event.target.loadPlaylist === 'function') {
+                  event.target.loadPlaylist({
+                    listType: 'search',
+                    list: `${track.title} ${track.artist}`,
+                    index: 0,
+                    startSeconds: 0,
+                  });
+                }
+              } catch (err) {}
+            }
           },
           onStateChange: (event: any) => {
             if (activeEngineRef.current === 'iframe') {
@@ -297,7 +318,7 @@ export function YouTubeBridge() {
 
     if (!window.YT) {
       const tag = document.createElement('script');
-      tag.src = 'https://www.youtube-nocookie.com/iframe_api';
+      tag.src = 'https://www.youtube.com/iframe_api';
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
       window.onYouTubeIframeAPIReady = initPlayer;
