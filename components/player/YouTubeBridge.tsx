@@ -14,6 +14,7 @@ export function YouTubeBridge() {
   const playerRef = useRef<any | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const keepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
+  const isPlayingRef = useRef<boolean>(false);
 
   const {
     currentTrack,
@@ -30,7 +31,12 @@ export function YouTubeBridge() {
     seekToTime,
   } = usePlayerStore();
 
-  // 1. Initialize Silent Background Keep-Alive Audio Element for Mobile Browsers
+  // Keep isPlayingRef updated in real time to avoid closure staleness
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  // 1. Initialize Silent Background Keep-Alive Audio Element & Touch Unlock Handler
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -39,12 +45,27 @@ export function YouTubeBridge() {
       // Silent 1-second PCM WAV loop
       audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
       audio.loop = true;
-      audio.volume = 0.001; // Silent output to hold OS audio session focus
+      audio.volume = 0.001; // Hold OS background audio focus
       keepAliveAudioRef.current = audio;
     }
+
+    // Touch unlock for mobile Chrome / Safari autoplay policy
+    const handleTouchUnlock = () => {
+      if (keepAliveAudioRef.current && isPlayingRef.current) {
+        keepAliveAudioRef.current.play().catch(() => {});
+      }
+    };
+
+    window.addEventListener('touchstart', handleTouchUnlock, { once: true });
+    window.addEventListener('click', handleTouchUnlock, { once: true });
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchUnlock);
+      window.removeEventListener('click', handleTouchUnlock);
+    };
   }, []);
 
-  // 2. Mobile MediaSession API Integration (Lock Screen & Background Notification Center Controls)
+  // 2. Mobile MediaSession API Integration (Lock Screen & Background Notification Controls)
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
 
@@ -52,7 +73,7 @@ export function YouTubeBridge() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title,
         artist: currentTrack.artist,
-        album: currentTrack.album || 'JIYA Music',
+        album: currentTrack.album || 'JIYA Music Engine',
         artwork: [
           {
             src: currentTrack.coverUrl || '/samples/covers/cyberpunk.jpg',
@@ -62,18 +83,19 @@ export function YouTubeBridge() {
         ],
       });
 
-      // Media Session Action Handlers for Background Playback
       try {
         navigator.mediaSession.setActionHandler('play', () => {
           setPlaying(true);
           const player = playerRef.current || usePlayerStore.getState().ytPlayer;
           if (player && typeof player.playVideo === 'function') player.playVideo();
+          if (keepAliveAudioRef.current) keepAliveAudioRef.current.play().catch(() => {});
         });
 
         navigator.mediaSession.setActionHandler('pause', () => {
           setPlaying(false);
           const player = playerRef.current || usePlayerStore.getState().ytPlayer;
           if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
+          if (keepAliveAudioRef.current) keepAliveAudioRef.current.pause();
         });
 
         navigator.mediaSession.setActionHandler('previoustrack', () => {
@@ -90,31 +112,29 @@ export function YouTubeBridge() {
           }
         });
       } catch (e) {
-        // Fallback if browser doesn't support specific action
+        // Ignored
       }
     }
   }, [currentTrack, playNext, playPrevious, seekToTime, setPlaying]);
 
-  // 3. Keep-Alive Audio Sync on Play / Pause (Prevents OS from suspending audio on screen off)
+  // 3. Sync Silent Audio Keep-Alive Stream
   useEffect(() => {
     const keepAlive = keepAliveAudioRef.current;
     if (!keepAlive) return;
 
     if (isPlaying && currentTrack) {
-      keepAlive.play().catch(() => {
-        // Auto-play policy handled on touch interaction
-      });
+      keepAlive.play().catch(() => {});
     } else {
       keepAlive.pause();
     }
   }, [isPlaying, currentTrack]);
 
-  // 4. Background Visibility Change Handler (Re-enforces playback when switching tabs or locking screen)
+  // 4. Background Tab Hide Re-enforcer (Overriding OS Tab-Switch Pause Signals)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleVisibilityChange = () => {
-      if (document.hidden && isPlaying && currentTrack) {
+      if (document.hidden && isPlayingRef.current && currentTrack) {
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
         if (player && typeof player.playVideo === 'function') {
           player.playVideo();
@@ -129,7 +149,7 @@ export function YouTubeBridge() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isPlaying, currentTrack]);
+  }, [currentTrack]);
 
   // 5. Dynamically Load YouTube IFrame API Script
   useEffect(() => {
@@ -158,7 +178,7 @@ export function YouTubeBridge() {
             setYtPlayer(event.target);
             event.target.setVolume(isMuted ? 0 : volume * 100);
 
-            if (currentTrack && isPlaying) {
+            if (currentTrack && isPlayingRef.current) {
               if (currentTrack.youtubeId) {
                 event.target.loadVideoById({
                   videoId: currentTrack.youtubeId,
@@ -182,6 +202,14 @@ export function YouTubeBridge() {
                 keepAliveAudioRef.current.play().catch(() => {});
               }
             } else if (event.data === 2) {
+              // Override tab-hide or screen lock background pause signal!
+              if (document.hidden && isPlayingRef.current) {
+                event.target.playVideo();
+                if (keepAliveAudioRef.current) {
+                  keepAliveAudioRef.current.play().catch(() => {});
+                }
+                return;
+              }
               setPlaying(false);
             } else if (event.data === 0) {
               setPlaying(false);
@@ -257,7 +285,7 @@ export function YouTubeBridge() {
     }
   }, [isPlaying]);
 
-  // 8. Progress Bar & Position State Sync Interval (Poll current time every 250ms & update MediaSession position state)
+  // 8. Progress Bar & MediaSession State Sync Interval
   useEffect(() => {
     const interval = setInterval(() => {
       const player = playerRef.current || usePlayerStore.getState().ytPlayer;
@@ -271,7 +299,6 @@ export function YouTubeBridge() {
         if (dur > 0) {
           setDuration(dur);
 
-          // Sync position state with Mobile Lock Screen / Control Center media controls
           if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
             try {
               navigator.mediaSession.setPositionState({
