@@ -3,10 +3,8 @@ import { ALL_INITIAL_TRACKS } from '@/lib/constants/featuredTracks';
 
 export const dynamic = 'force-dynamic';
 
-// In-memory search cache (query -> results)
 const searchCache = new Map<string, any[]>();
 
-// Helper to convert YouTube duration string "4:15" or "1:02:30" to seconds
 function parseDuration(durationStr?: string): number {
   if (!durationStr) return 210;
   const parts = durationStr.split(':').map((p) => parseInt(p, 10));
@@ -18,12 +16,43 @@ function parseDuration(durationStr?: string): number {
   return 210;
 }
 
-// 1. Direct YouTube Scraper Engine (Parses ytInitialData from YouTube Search)
+// 1. Official YouTube Data API v3 Search
+async function searchYouTubeOfficialApi(query: string, apiKey: string): Promise<any[]> {
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=12&q=${encodeURIComponent(
+      query
+    )}&key=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!data.items || !Array.isArray(data.items)) return [];
+
+    return data.items.map((item: any) => ({
+      id: `yt-api-${item.id?.videoId || Math.random()}`,
+      title: (item.snippet?.title || query)
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/\(Official Video\)/gi, '')
+        .replace(/\[Official Music Video\]/gi, '')
+        .trim(),
+      artist: item.snippet?.channelTitle || 'Artist',
+      album: 'Single',
+      genre: 'YouTube Music',
+      duration: 210,
+      youtubeId: item.id?.videoId,
+      coverUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url,
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
+// 2. Direct YouTube HTML Scraper Engine
 async function searchYouTubeDirect(query: string): Promise<any[]> {
   try {
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
-      query + ' song'
-    )}`;
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' song')}`;
     const res = await fetch(searchUrl, {
       headers: {
         'User-Agent':
@@ -41,8 +70,7 @@ async function searchYouTubeDirect(query: string): Promise<any[]> {
 
     const data = JSON.parse(match[1]);
     const contents =
-      data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer
-        ?.contents;
+      data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
 
     const items: any[] = [];
     if (contents && Array.isArray(contents)) {
@@ -54,19 +82,15 @@ async function searchYouTubeDirect(query: string): Promise<any[]> {
             if (vr && vr.videoId) {
               const videoId = vr.videoId;
               const rawTitle = vr.title?.runs?.[0]?.text || query;
-              // Clean up title (remove official video tags for clean music app look)
               const title = rawTitle
                 .replace(/\(Official Video\)/gi, '')
                 .replace(/\[Official Music Video\]/gi, '')
                 .replace(/\(Audio\)/gi, '')
-                .replace(/\[Lyrical Video\]/gi, '')
                 .trim();
 
               const artist = vr.ownerText?.runs?.[0]?.text || 'Artist';
               const rawThumb = vr.thumbnail?.thumbnails?.slice(-1)[0]?.url;
-              // Upgrade thumbnail to HQ default if possible
-              const coverUrl =
-                rawThumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+              const coverUrl = rawThumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
               const duration = parseDuration(vr.lengthText?.simpleText);
 
               items.push({
@@ -90,17 +114,14 @@ async function searchYouTubeDirect(query: string): Promise<any[]> {
 
     return items;
   } catch (err) {
-    console.warn('YouTube Scraper warning:', err);
     return [];
   }
 }
 
-// 2. iTunes Global Search API Engine
+// 3. iTunes Global Search API Engine
 async function searchiTunes(query: string): Promise<any[]> {
   try {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(
-      query
-    )}&entity=song&limit=10`;
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`;
     const res = await fetch(url);
     if (!res.ok) return [];
 
@@ -148,7 +169,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(searchCache.get(cacheKey));
     }
 
-    // A. Match local curated track constants first
+    const ytApiKey = process.env.YOUTUBE_API_KEY;
+
+    // A. Match local initial tracks
     const localMatches = ALL_INITIAL_TRACKS.filter(
       (t) =>
         t.title.toLowerCase().includes(cacheKey) ||
@@ -156,18 +179,19 @@ export async function GET(request: NextRequest) {
         (t.album && t.album.toLowerCase().includes(cacheKey))
     );
 
-    // B. Fetch live results from YouTube direct search scraper & iTunes
-    const [ytResults, itunesResults] = await Promise.all([
-      searchYouTubeDirect(query),
-      searchiTunes(query),
-    ]);
+    // B. Fetch live results (Official YouTube API if key provided, else Scraper & iTunes)
+    const ytResults = ytApiKey
+      ? await searchYouTubeOfficialApi(query, ytApiKey)
+      : await searchYouTubeDirect(query);
+
+    const itunesResults = await searchiTunes(query);
 
     // Combine & deduplicate results
     const combined: any[] = [...localMatches];
     const existingIds = new Set(combined.map((t) => t.youtubeId || t.id));
 
     for (const item of ytResults) {
-      if (!existingIds.has(item.youtubeId)) {
+      if (item.youtubeId && !existingIds.has(item.youtubeId)) {
         combined.push(item);
         existingIds.add(item.youtubeId);
       }
@@ -179,7 +203,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Cache results in memory
     if (combined.length > 0) {
       searchCache.set(cacheKey, combined);
       if (searchCache.size > 300) {
@@ -190,7 +213,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(combined);
   } catch (error) {
-    console.error('Search API Error:', error);
     return NextResponse.json({ error: 'Failed to perform search' }, { status: 500 });
   }
 }
