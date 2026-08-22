@@ -21,14 +21,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {/* Aesthetic Blurred Background Image Layer */}
+      {/* Aesthetic Background Image Layer - Visible & Sharp Depth */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden select-none">
         <div
-          className="absolute -inset-10 bg-cover bg-center bg-no-repeat blur-[45px] scale-110 opacity-45 dark:opacity-40 transition-all duration-700 brightness-95 contrast-105"
+          className="absolute -inset-5 bg-cover bg-center bg-no-repeat blur-[8px] scale-105 opacity-80 dark:opacity-75 transition-all duration-700 brightness-100 contrast-105"
           style={{ backgroundImage: `url('/bg-hero.jpg')` }}
         />
-        {/* Soft Ambient Dark Overlay for High-End Glassmorphism & Text Clarity */}
-        <div className="absolute inset-0 bg-slate-950/60 dark:bg-[#0B0F17]/75 backdrop-blur-md" />
+        {/* Subtle Ambient Dark Tint Overlay for Readability */}
+        <div className="absolute inset-0 bg-slate-950/30 dark:bg-[#0B0F17]/45 backdrop-blur-[1px]" />
       </div>
 
       <div className="flex-1 flex min-h-0 relative z-10 overflow-hidden">
