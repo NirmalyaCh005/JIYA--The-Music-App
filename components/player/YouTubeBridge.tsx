@@ -109,15 +109,11 @@ export function YouTubeBridge() {
               nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
               nativeAudioRef.current.load();
               if (isPlayingRef.current) {
-                nativeAudioRef.current.play().catch((err) => {
-                  console.error("Fallback native audio play error:", err);
-                });
+                nativeAudioRef.current.play().catch(() => {});
               }
             }
           }
-        } catch (err) {
-          console.error("Track re-resolution error:", err);
-        }
+        } catch (err) {}
       };
     }
 
@@ -292,7 +288,7 @@ export function YouTubeBridge() {
     }, stepTime);
   };
 
-  // 4. Universal Track Audio Engine (Executes audio.load() and audio.play() immediately inside user gesture stack)
+  // 4. Universal Track Audio Engine (Handles Direct Stream, Resolved Stream & YouTube IDs)
   useEffect(() => {
     if (!currentTrack) return;
 
@@ -312,7 +308,7 @@ export function YouTubeBridge() {
           currentTrack.audioUrl.startsWith('https://') ||
           currentTrack.audioUrl.startsWith('/'));
 
-      // Step 1: If track already has direct HTTP audio URL
+      // Step 1: Track has direct HTTP audio stream URL
       if (isDirectAudioUrl && currentTrack.audioUrl) {
         if (!isCancelled && nativeAudioRef.current) {
           activeEngineRef.current = 'native';
@@ -338,13 +334,15 @@ export function YouTubeBridge() {
         }
       }
 
-      // Step 2: Resolve track to direct 320kbps HTTP stream
+      // Step 2: Resolve track via /api/resolve-track
       try {
         const res = await fetch(
           `/api/resolve-track?q=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
         );
         if (res.ok) {
           const data = await res.json();
+
+          // A. Resolved direct HTTP audio stream (JioSaavn 320kbps / proxy)
           if (data.audioUrl && data.audioUrl.startsWith('http') && nativeAudioRef.current) {
             if (!isCancelled) {
               activeEngineRef.current = 'native';
@@ -360,12 +358,37 @@ export function YouTubeBridge() {
               return;
             }
           }
+
+          // B. Resolved YouTube Video ID
+          const ytId = sanitizeYouTubeId(data.youtubeId || data.audioUrl);
+          const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+          if (ytId && player && !isCancelled) {
+            activeEngineRef.current = 'iframe';
+            if (nativeAudioRef.current) nativeAudioRef.current.pause();
+            try {
+              if (typeof player.loadVideoById === 'function') {
+                player.loadVideoById({
+                  videoId: ytId,
+                  startSeconds: 0,
+                });
+                if (typeof player.playVideo === 'function') {
+                  try { player.playVideo(); } catch (err) {}
+                }
+                if (isPlayingRef.current && silentAudioRef.current) {
+                  silentAudioRef.current.play().catch(() => {});
+                }
+              }
+            } catch (e) {
+              console.warn('YouTube IFrame load error:', e);
+            }
+            return;
+          }
         }
       } catch (err) {
-        console.warn('Direct stream resolution failed, attempting YouTube fallback:', err);
+        console.warn('Track resolution failed, attempting direct YouTube ID load:', err);
       }
 
-      // Step 3: YouTube IFrame Engine Fallback
+      // Step 3: Direct YouTube ID on currentTrack object fallback
       if (!isCancelled) {
         let cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId || currentTrack.audioUrl);
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
@@ -443,7 +466,7 @@ export function YouTubeBridge() {
     }
   }, [isPlaying, volume, isMuted]);
 
-  // 6. Dynamically Load YouTube IFrame API Script with Mobile Web View Origin Options
+  // 6. Dynamically Load YouTube IFrame API Script
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -553,7 +576,7 @@ export function YouTubeBridge() {
     return () => clearInterval(interval);
   }, [setCurrentTime, setDuration]);
 
-  // 8. Android WebView 1.5-Second Stalled Playback Watchdog (Guarantees Instant Audio Fallback)
+  // 8. Android WebView 1.5-Second Stalled Playback Watchdog
   useEffect(() => {
     let watchdogTimer: NodeJS.Timeout | null = null;
 
