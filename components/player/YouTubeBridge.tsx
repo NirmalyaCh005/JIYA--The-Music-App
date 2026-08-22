@@ -42,7 +42,7 @@ export function YouTubeBridge() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // 1. Initialize Primary Native HTML5 Audio Engine (100% Android WebView Compatible)
+  // 1. Initialize Primary Native HTML5 Audio Engine with Debugging & Auto-Retry Listeners
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -59,6 +59,14 @@ export function YouTubeBridge() {
         if ('mediaSession' in navigator) {
           navigator.mediaSession.playbackState = 'playing';
         }
+      };
+
+      audio.onplaying = () => {
+        console.log("Audio successfully playing!");
+      };
+
+      audio.onwaiting = () => {
+        console.log("Audio buffering...");
       };
 
       audio.onpause = () => {
@@ -87,7 +95,7 @@ export function YouTubeBridge() {
       };
 
       audio.onerror = async (e) => {
-        console.warn('Native HTML5 Audio error, attempting track stream re-resolution:', e);
+        console.error("Native Audio Playback Error:", audio.error || e);
         const track = usePlayerStore.getState().currentTrack;
         if (!track) return;
 
@@ -99,12 +107,17 @@ export function YouTubeBridge() {
             const data = await res.json();
             if (data.audioUrl && data.audioUrl.startsWith('http') && nativeAudioRef.current) {
               nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
+              nativeAudioRef.current.load();
               if (isPlayingRef.current) {
-                nativeAudioRef.current.play().catch(() => {});
+                nativeAudioRef.current.play().catch((err) => {
+                  console.error("Fallback native audio play error:", err);
+                });
               }
             }
           }
-        } catch (err) {}
+        } catch (err) {
+          console.error("Track re-resolution error:", err);
+        }
       };
     }
 
@@ -118,7 +131,7 @@ export function YouTubeBridge() {
     }
   }, [playNext, setCurrentTime, setDuration, setPlaying]);
 
-  // 2. Mobile MediaSession API Integration (Lock Screen Controls & System Notification Bar)
+  // 2. Mobile MediaSession API Integration
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
 
@@ -279,7 +292,7 @@ export function YouTubeBridge() {
     }, stepTime);
   };
 
-  // 4. Universal Track Audio Engine (Prioritizes Direct 320kbps HTTP Streaming for 100% Android WebView Compatibility)
+  // 4. Universal Track Audio Engine (Executes audio.load() and audio.play() immediately inside user gesture stack)
   useEffect(() => {
     if (!currentTrack) return;
 
@@ -299,7 +312,7 @@ export function YouTubeBridge() {
           currentTrack.audioUrl.startsWith('https://') ||
           currentTrack.audioUrl.startsWith('/'));
 
-      // Step 1: If track already has direct HTTP audio URL (e.g. JioSaavn stream or uploaded file)
+      // Step 1: If track already has direct HTTP audio URL
       if (isDirectAudioUrl && currentTrack.audioUrl) {
         if (!isCancelled && nativeAudioRef.current) {
           activeEngineRef.current = 'native';
@@ -307,6 +320,7 @@ export function YouTubeBridge() {
             ? `/api/stream?url=${encodeURIComponent(currentTrack.audioUrl)}`
             : currentTrack.audioUrl;
           nativeAudioRef.current.src = finalSrc;
+          nativeAudioRef.current.load();
           nativeAudioRef.current.volume = isMuted ? 0 : volume;
 
           const player = playerRef.current || usePlayerStore.getState().ytPlayer;
@@ -315,14 +329,16 @@ export function YouTubeBridge() {
           }
 
           if (isPlayingRef.current) {
-            nativeAudioRef.current.play().catch(() => {});
+            nativeAudioRef.current.play().catch((err) => {
+              console.warn('Native audio play error:', err);
+            });
             if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
           }
           return;
         }
       }
 
-      // Step 2: Resolve track to direct 320kbps HTTP stream (Bypasses YouTube WebView restrictions on Android APKs)
+      // Step 2: Resolve track to direct 320kbps HTTP stream
       try {
         const res = await fetch(
           `/api/resolve-track?q=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
@@ -333,9 +349,12 @@ export function YouTubeBridge() {
             if (!isCancelled) {
               activeEngineRef.current = 'native';
               nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
+              nativeAudioRef.current.load();
               nativeAudioRef.current.volume = isMuted ? 0 : volume;
               if (isPlayingRef.current) {
-                nativeAudioRef.current.play().catch(() => {});
+                nativeAudioRef.current.play().catch((err) => {
+                  console.warn('Resolved native audio play error:', err);
+                });
                 if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
               }
               return;
@@ -346,7 +365,7 @@ export function YouTubeBridge() {
         console.warn('Direct stream resolution failed, attempting YouTube fallback:', err);
       }
 
-      // Step 3: YouTube IFrame Engine Fallback (for tracks with only youtubeId)
+      // Step 3: YouTube IFrame Engine Fallback
       if (!isCancelled) {
         let cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId || currentTrack.audioUrl);
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
@@ -543,7 +562,6 @@ export function YouTubeBridge() {
         const time = usePlayerStore.getState().currentTime;
         const isStillPlaying = usePlayerStore.getState().isPlaying;
 
-        // If progress is stuck at 0:00 (due to Android WebView YouTube IFrame restriction)
         if (time === 0 && isStillPlaying) {
           console.warn('Playback stalled at 0:00 on Android WebView. Forcing direct stream fallback...');
 
@@ -556,8 +574,11 @@ export function YouTubeBridge() {
               if (data.audioUrl && data.audioUrl.startsWith('http') && nativeAudioRef.current) {
                 activeEngineRef.current = 'native';
                 nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
+                nativeAudioRef.current.load();
                 nativeAudioRef.current.volume = usePlayerStore.getState().isMuted ? 0 : usePlayerStore.getState().volume;
-                nativeAudioRef.current.play().catch(() => {});
+                nativeAudioRef.current.play().catch((err) => {
+                  console.error('Watchdog fallback audio play error:', err);
+                });
                 if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
               }
             }

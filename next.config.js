@@ -14,13 +14,25 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'via.placeholder.com',
-      }
+      },
     ],
   },
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
     },
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+        ],
+      },
+    ];
   },
 };
 

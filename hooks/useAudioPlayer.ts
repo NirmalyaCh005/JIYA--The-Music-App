@@ -43,10 +43,11 @@ export function useAudioPlayer() {
       }
       const dummy = new Audio();
       dummy.volume = 0.001;
+      dummy.load();
       const playPromise = dummy.play();
       if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          // Silently catch NotAllowedError / autoplay rejection on first gesture
+        playPromise.catch((e) => {
+          console.log('Audio autoplay gesture primed:', e?.message || e);
         });
       }
     } catch (e) {}
@@ -76,7 +77,7 @@ export function useAudioPlayer() {
           }
         }
       } catch (err) {
-        console.warn('Failed to resolve track audio:', err);
+        console.warn('Failed to resolve track audio, using direct proxy stream fallback:', err);
       }
     }
 
