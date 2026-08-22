@@ -1,15 +1,15 @@
 package com.jiya.music;
 
 import android.annotation.SuppressLint;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
+import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.IBinder;
+import android.os.PowerManager;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
@@ -25,40 +25,20 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private AudioManager audioManager;
-    private AudioService audioService;
-    private boolean isBound = false;
+    private MediaPlayer mediaPlayer;
     private static final String APP_URL = "https://jiya-kappa.vercel.app";
-
-    private final ServiceConnection serviceConnection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
-            AudioService.LocalBinder binder = (AudioService.LocalBinder) service;
-            audioService = binder.getService();
-            isBound = true;
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName name) {
-            isBound = false;
-            audioService = null;
-        }
-    };
 
     public class WebAppNativeInterface {
         @JavascriptInterface
         public void playNativeAudio(String streamUrl, String title, String artist) {
-            runOnUiThread(() -> {
-                if (isBound && audioService != null) {
-                    audioService.playStreamUrl(streamUrl, title, artist);
-                }
-            });
+            runOnUiThread(() -> playStream(streamUrl, title, artist));
         }
 
         @JavascriptInterface
         public void pauseNativeAudio() {
             runOnUiThread(() -> {
-                if (isBound && audioService != null) {
-                    audioService.pauseAudio();
+                if (mediaPlayer != null && mediaPlayer.isPlaying()) {
+                    mediaPlayer.pause();
                 }
             });
         }
@@ -66,8 +46,8 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void resumeNativeAudio() {
             runOnUiThread(() -> {
-                if (isBound && audioService != null) {
-                    audioService.resumeAudio();
+                if (mediaPlayer != null && !mediaPlayer.isPlaying()) {
+                    mediaPlayer.start();
                 }
             });
         }
@@ -81,13 +61,13 @@ public class MainActivity extends AppCompatActivity {
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Bind Native Audio Service
-        Intent intent = new Intent(this, AudioService.class);
-        ContextCompat.startForegroundService(this, intent);
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+        // Start Background Foreground Service
+        startAudioService("Jiya Music", "Background Audio Engine Active");
 
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         requestSystemAudioFocus();
+
+        initMediaPlayer();
 
         webView = findViewById(R.id.webview);
 
@@ -125,6 +105,55 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void startAudioService(String title, String artist) {
+        try {
+            Intent serviceIntent = new Intent(this, AudioService.class);
+            serviceIntent.putExtra("title", title);
+            serviceIntent.putExtra("artist", artist);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(this, serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void initMediaPlayer() {
+        if (mediaPlayer == null) {
+            mediaPlayer = new MediaPlayer();
+            mediaPlayer.setAudioAttributes(
+                    new AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .build()
+            );
+            try {
+                mediaPlayer.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
+            } catch (Exception e) {}
+        }
+    }
+
+    private void playStream(String url, String title, String artist) {
+        try {
+            initMediaPlayer();
+            mediaPlayer.reset();
+            mediaPlayer.setDataSource(url);
+            mediaPlayer.prepareAsync();
+            mediaPlayer.setOnPreparedListener(mp -> {
+                mp.start();
+                startAudioService(title, artist);
+            });
+            mediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                mediaPlayer.reset();
+                return true;
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private void requestSystemAudioFocus() {
         if (audioManager == null) return;
 
@@ -157,9 +186,11 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        if (isBound) {
-            unbindService(serviceConnection);
-            isBound = false;
+        if (mediaPlayer != null) {
+            try {
+                mediaPlayer.release();
+            } catch (Exception e) {}
+            mediaPlayer = null;
         }
         super.onDestroy();
     }
