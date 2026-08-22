@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.jiya.music.app-release-32:/layout_activity_main.xml.flat",
+        "source": "com.jiya.music.app-main-33:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.jiya.music.app-release-32:/drawable_ic_launcher.xml.flat",
+        "source": "com.jiya.music.app-main-33:/drawable/ic_launcher.xml"
+    }
+]

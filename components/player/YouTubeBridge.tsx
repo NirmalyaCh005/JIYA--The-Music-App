@@ -42,18 +42,12 @@ export function YouTubeBridge() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // 1. Initialize Primary Native HTML5 Audio Engine with Debugging & Auto-Retry Listeners
+  // 1. Configure Native Audio & Silent Keep-Alive Event Listeners
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (!nativeAudioRef.current) {
-      const audio = new Audio();
-      audio.preload = 'auto';
-      audio.setAttribute('playsinline', 'true');
-      audio.setAttribute('webkit-playsinline', 'true');
-      audio.setAttribute('x5-playsinline', 'true');
-      nativeAudioRef.current = audio;
-
+    const audio = nativeAudioRef.current;
+    if (audio) {
       audio.onplay = () => {
         setPlaying(true);
         if ('mediaSession' in navigator) {
@@ -117,13 +111,9 @@ export function YouTubeBridge() {
       };
     }
 
-    if (!silentAudioRef.current) {
-      const silent = new Audio(SILENT_WAV_URI);
-      silent.loop = true;
+    const silent = silentAudioRef.current;
+    if (silent) {
       silent.volume = 0.0001;
-      silent.setAttribute('playsinline', 'true');
-      silent.setAttribute('webkit-playsinline', 'true');
-      silentAudioRef.current = silent;
     }
   }, [playNext, setCurrentTime, setDuration, setPlaying]);
 
@@ -207,7 +197,7 @@ export function YouTubeBridge() {
     });
   }, [currentTrack, isPlaying, playNext, playPrevious, seekToTime, setPlaying]);
 
-  // 3. Mobile Background & Screen Off Playback Event Listeners
+  // 3. Page Visibility & Screen Lock Event Listeners
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -288,7 +278,7 @@ export function YouTubeBridge() {
     }, stepTime);
   };
 
-  // 4. Universal Track Audio Engine (Handles Direct Stream, Resolved Stream & YouTube IDs)
+  // 4. Universal Track Audio Engine
   useEffect(() => {
     if (!currentTrack) return;
 
@@ -621,6 +611,20 @@ export function YouTubeBridge() {
       className="fixed -left-[9999px] -top-[9999px] w-1 h-1 overflow-hidden opacity-0 pointer-events-none z-[-1]"
     >
       <div id="jiya-yt-player" />
+      <audio
+        ref={nativeAudioRef}
+        playsInline
+        preload="auto"
+        className="hidden"
+      />
+      <audio
+        ref={silentAudioRef}
+        src={SILENT_WAV_URI}
+        loop
+        playsInline
+        preload="auto"
+        className="hidden"
+      />
     </div>
   );
 }
