@@ -224,8 +224,14 @@ export function YouTubeBridge() {
     let isCancelled = false;
 
     const loadTrackAudio = async () => {
-      // 1. If track has custom audio URL (e.g. user uploaded MP3/WAV file)
-      if (currentTrack.audioUrl) {
+      const isDirectAudioUrl =
+        currentTrack.audioUrl &&
+        (currentTrack.audioUrl.startsWith('http://') ||
+          currentTrack.audioUrl.startsWith('https://') ||
+          currentTrack.audioUrl.startsWith('/'));
+
+      // 1. If track has direct HTTP / file audio URL (e.g. JioSaavn 320kbps stream or uploaded MP3)
+      if (isDirectAudioUrl && currentTrack.audioUrl) {
         if (!isCancelled) {
           activeEngineRef.current = 'native';
           if (nativeAudioRef.current) {
@@ -254,9 +260,9 @@ export function YouTubeBridge() {
         activeEngineRef.current = 'iframe';
         if (nativeAudioRef.current) nativeAudioRef.current.pause();
 
-        let cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId);
+        let cleanYtId = sanitizeYouTubeId(currentTrack.youtubeId || currentTrack.audioUrl);
 
-        if (!cleanYtId && !currentTrack.audioUrl) {
+        if (!cleanYtId) {
           try {
             const res = await fetch(
               `/api/resolve-track?q=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
@@ -265,6 +271,14 @@ export function YouTubeBridge() {
               const data = await res.json();
               if (data.youtubeId) {
                 cleanYtId = sanitizeYouTubeId(data.youtubeId);
+              } else if (data.audioUrl && data.audioUrl.startsWith('http')) {
+                // If resolved to direct audio URL dynamically
+                if (nativeAudioRef.current) {
+                  activeEngineRef.current = 'native';
+                  nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
+                  if (isPlayingRef.current) nativeAudioRef.current.play().catch(() => {});
+                  return;
+                }
               }
             }
           } catch (e) {}

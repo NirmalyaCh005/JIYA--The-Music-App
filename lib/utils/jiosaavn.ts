@@ -79,14 +79,16 @@ export function mapJioSaavnSongToTrack(item: any): Track {
     coverUrl,
     audioUrl: fullAudioUrl,
     youtubeId: item.youtubeId || null,
+    source: 'saavn',
   };
 }
 
 // 1. Unified Search Songs via JioSaavn API Endpoints
-export async function searchJioSaavnSongs(query: string, limit: number = 25): Promise<Track[]> {
+export async function searchJioSaavnSongs(query: string, limit: number = 20): Promise<Track[]> {
   const endpoints = [
-    `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`,
+    `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&page=1&limit=${limit}`,
     `https://jiosaavn-api-privatecvc2.vercel.app/search?query=${encodeURIComponent(query)}`,
+    `https://saavn.me/search/songs?query=${encodeURIComponent(query)}`,
     `https://saavn.me/api/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`,
     `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&p=1&n=${limit}&q=${encodeURIComponent(query)}`,
   ];

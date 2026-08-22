@@ -12,6 +12,7 @@ export interface Track {
   isLiked?: boolean;
   playCount?: number;
   createdAt?: string | Date;
+  source?: 'saavn' | 'youtube' | 'local';
 }
 
 export interface PlaylistTrack {

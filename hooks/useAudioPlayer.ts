@@ -34,19 +34,24 @@ export function useAudioPlayer() {
   const playTrack = async (track: Track) => {
     if (!track) return;
 
-    if (!track.youtubeId) {
+    if (!track.audioUrl && !track.youtubeId) {
       try {
         const res = await fetch(
           `/api/resolve-track?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`
         );
         if (res.ok) {
           const data = await res.json();
-          if (data.youtubeId) {
-            track = { ...track, youtubeId: data.youtubeId };
+          if (data.audioUrl || data.youtubeId) {
+            track = {
+              ...track,
+              audioUrl: data.audioUrl || track.audioUrl,
+              youtubeId: data.youtubeId || track.youtubeId,
+              source: data.source || track.source,
+            };
           }
         }
       } catch (err) {
-        console.warn('Failed to resolve youtubeId for track:', err);
+        console.warn('Failed to resolve track audio:', err);
       }
     }
 
@@ -57,19 +62,24 @@ export function useAudioPlayer() {
     if (!tracks || tracks.length === 0) return;
     const targetTrack = tracks[index];
 
-    if (targetTrack && !targetTrack.youtubeId) {
+    if (targetTrack && !targetTrack.audioUrl && !targetTrack.youtubeId) {
       try {
         const res = await fetch(
           `/api/resolve-track?q=${encodeURIComponent(`${targetTrack.title} ${targetTrack.artist}`)}`
         );
         if (res.ok) {
           const data = await res.json();
-          if (data.youtubeId) {
-            tracks[index] = { ...targetTrack, youtubeId: data.youtubeId };
+          if (data.audioUrl || data.youtubeId) {
+            tracks[index] = {
+              ...targetTrack,
+              audioUrl: data.audioUrl || targetTrack.audioUrl,
+              youtubeId: data.youtubeId || targetTrack.youtubeId,
+              source: data.source || targetTrack.source,
+            };
           }
         }
       } catch (err) {
-        console.warn('Failed to resolve youtubeId:', err);
+        console.warn('Failed to resolve track list item audio:', err);
       }
     }
 
