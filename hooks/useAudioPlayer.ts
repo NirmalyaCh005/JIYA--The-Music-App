@@ -34,7 +34,7 @@ export function useAudioPlayer() {
   const isPreviewUrl = (url?: string | null) =>
     !!url && (url.includes('itunes.apple.com') || url.includes('preview') || url.includes('p.scdn.co'));
 
-  // Prime / unlock HTML5 Audio context synchronously inside user gesture callstack for Android WebView
+  // Prime / unlock HTML5 Audio context synchronously inside user gesture callstack
   const primeUserGestureAudio = () => {
     if (typeof window === 'undefined') return;
     try {
@@ -46,9 +46,7 @@ export function useAudioPlayer() {
       dummy.load();
       const playPromise = dummy.play();
       if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          console.log('Audio autoplay gesture primed:', e?.message || e);
-        });
+        playPromise.catch((e) => {});
       }
     } catch (e) {}
   };
@@ -56,10 +54,12 @@ export function useAudioPlayer() {
   const playTrack = async (track: Track) => {
     if (!track) return;
 
-    // Execute gesture priming & setPlaying directly inside user click callstack
+    // 1. Instantly set current track & set playing inside click handler callstack
     primeUserGestureAudio();
     setPlaying(true);
+    setCurrentTrack(track);
 
+    // 2. Resolve audio stream asynchronously if audioUrl is missing or preview
     if (!track.audioUrl || isPreviewUrl(track.audioUrl) || (!track.youtubeId && !track.audioUrl?.startsWith('http'))) {
       try {
         const res = await fetch(
@@ -68,30 +68,31 @@ export function useAudioPlayer() {
         if (res.ok) {
           const data = await res.json();
           if (data.audioUrl || data.youtubeId) {
-            track = {
+            const resolvedTrack = {
               ...track,
               audioUrl: data.audioUrl || track.audioUrl,
               youtubeId: data.youtubeId || track.youtubeId,
               source: data.source || track.source,
             };
+            setCurrentTrack(resolvedTrack);
           }
         }
       } catch (err) {
-        console.warn('Failed to resolve track audio, using direct proxy stream fallback:', err);
+        console.warn('Failed to resolve track audio stream:', err);
       }
     }
-
-    setCurrentTrack(track);
   };
 
   const playTrackList = async (tracks: Track[], index: number = 0) => {
     if (!tracks || tracks.length === 0) return;
     const targetTrack = tracks[index];
 
-    // Execute gesture priming & setPlaying directly inside user click callstack
+    // 1. Instantly set queue & current track inside click handler callstack
     primeUserGestureAudio();
     setPlaying(true);
+    setQueue(tracks, index);
 
+    // 2. Resolve audio stream asynchronously if audioUrl is missing or preview
     if (targetTrack && (!targetTrack.audioUrl || isPreviewUrl(targetTrack.audioUrl) || (!targetTrack.youtubeId && !targetTrack.audioUrl?.startsWith('http')))) {
       try {
         const res = await fetch(
@@ -100,20 +101,21 @@ export function useAudioPlayer() {
         if (res.ok) {
           const data = await res.json();
           if (data.audioUrl || data.youtubeId) {
-            tracks[index] = {
+            const updatedTrack = {
               ...targetTrack,
               audioUrl: data.audioUrl || targetTrack.audioUrl,
               youtubeId: data.youtubeId || targetTrack.youtubeId,
               source: data.source || targetTrack.source,
             };
+            const updatedTracks = [...tracks];
+            updatedTracks[index] = updatedTrack;
+            setQueue(updatedTracks, index);
           }
         }
       } catch (err) {
-        console.warn('Failed to resolve track list item audio:', err);
+        console.warn('Failed to resolve track list item audio stream:', err);
       }
     }
-
-    setQueue(tracks, index);
   };
 
   const handleTogglePlayPause = () => {

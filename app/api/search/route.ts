@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 const searchCache = new Map<string, Track[]>();
 
-// Asynchronously persist tracks to Prisma SQLite database (dev.db)
+// Asynchronously persist tracks to Prisma SQLite database
 async function persistTracksToDatabase(tracks: Track[]) {
   try {
     for (const t of tracks.slice(0, 15)) {
@@ -40,33 +40,27 @@ async function persistTracksToDatabase(tracks: Track[]) {
         },
       });
     }
-  } catch (err) {
-    // Non-blocking database sync
-  }
+  } catch (err) {}
 }
 
 // Helper to strictly format track output according to uniform Track schema
 function formatUniformTrack(t: Partial<Track>): Track {
-  const isSaavn = t.source === 'saavn' || (!!t.audioUrl && t.audioUrl.startsWith('http'));
-  const source: 'saavn' | 'youtube' = isSaavn ? 'saavn' : 'youtube';
-
-  const audioUrl =
-    t.audioUrl ||
-    t.youtubeId ||
-    (t.id ? t.id.replace(/^(spotify-|saavn-|itunes-|yt-|trending-|hindi-|global-|punjabi-|lofi-)/, '') : '');
+  const isDirectHttp = !!t.audioUrl && t.audioUrl.startsWith('http');
+  const source: 'saavn' | 'youtube' = isDirectHttp ? 'saavn' : 'youtube';
 
   return {
     id: t.id || `track-${Math.random().toString(36).substring(7)}`,
     title: t.title || 'Untitled Track',
     artist: t.artist || 'Unknown Artist',
     album: t.album || (source === 'saavn' ? 'Single' : 'YouTube Audio'),
+    genre: t.genre || 'Music',
     duration: t.duration && t.duration > 0 ? t.duration : 210,
     coverUrl:
       t.coverUrl ||
       'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
-    audioUrl: audioUrl || '',
+    audioUrl: isDirectHttp ? t.audioUrl! : null,
     source,
-    youtubeId: t.youtubeId || (source === 'youtube' ? audioUrl : null),
+    youtubeId: t.youtubeId || null,
   };
 }
 
@@ -96,7 +90,6 @@ export async function GET(request: NextRequest) {
         searchSpotifyTracks(query, 15).catch(() => []),
       ]);
 
-      // Combine results while preserving query relevance & deduplicating by title
       const combinedMap = new Map<string, Track>();
 
       // A. Prefer JioSaavn direct 320kbps tracks
@@ -129,7 +122,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ==========================================
-    // Tier 2: Invidious / Piped Mirrors (YouTube zero-quota fallback)
+    // Tier 2: Invidious / Piped Mirrors
     // ==========================================
     if (results.length === 0) {
       try {
@@ -143,7 +136,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ==========================================
-    // Tier 3: Local Offline Seeded Catalog
+    // Tier 3: Local Catalog Search
     // ==========================================
     if (results.length === 0) {
       const localMatches = ALL_INITIAL_TRACKS.filter(
@@ -159,7 +152,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Sync non-empty search results to Prisma SQLite Database asynchronously
     if (results.length > 0) {
       persistTracksToDatabase(results).catch(() => {});
       searchCache.set(cacheKey, results);
