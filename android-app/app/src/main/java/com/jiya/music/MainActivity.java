@@ -1,22 +1,26 @@
 package com.jiya.music;
 
 import android.annotation.SuppressLint;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -26,6 +30,8 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private AudioManager audioManager;
     private MediaPlayer mediaPlayer;
+    private ValueCallback<Uri[]> uploadMessage;
+    public static final int REQUEST_SELECT_FILE = 100;
     private static final String APP_URL = "https://jiya-kappa.vercel.app";
 
     public class WebAppNativeInterface {
@@ -98,10 +104,41 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        webView.setWebChromeClient(new WebChromeClient());
+        // Enable Android File Chooser for File Uploads
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (uploadMessage != null) {
+                    uploadMessage.onReceiveValue(null);
+                    uploadMessage = null;
+                }
+
+                uploadMessage = filePathCallback;
+
+                Intent intent = fileChooserParams.createIntent();
+                try {
+                    startActivityForResult(intent, REQUEST_SELECT_FILE);
+                } catch (ActivityNotFoundException e) {
+                    uploadMessage = null;
+                    Toast.makeText(MainActivity.this, "Cannot Open File Chooser", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                return true;
+            }
+        });
 
         if (savedInstanceState == null) {
             webView.loadUrl(APP_URL);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_SELECT_FILE) {
+            if (uploadMessage == null) return;
+            uploadMessage.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
+            uploadMessage = null;
         }
     }
 

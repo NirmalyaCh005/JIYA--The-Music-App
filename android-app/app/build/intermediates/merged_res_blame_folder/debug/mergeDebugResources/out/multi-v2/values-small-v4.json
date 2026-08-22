@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.jiya.music.app-mergeDebugResources-30:/values-small-v4/values-small-v4.xml",
+            "outputFile": "com.jiya.music.app-mergeDebugResources-33:/values-small-v4/values-small-v4.xml",
             "map": [
                 {
                     "source": "C:\\Users\\Rick\\.gradle\\caches\\8.13\\transforms\\599a5935c2166e8e0b398a0aed9a2d82\\transformed\\material-1.11.0\\res\\values-small-v4\\values-small-v4.xml",

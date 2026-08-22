@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.jiya.music.app-mergeDebugResources-30:/values-en-rCA/values-en-rCA.xml",
+            "outputFile": "com.jiya.music.app-mergeDebugResources-33:/values-en-rCA/values-en-rCA.xml",
             "map": [
                 {
                     "source": "C:\\Users\\Rick\\.gradle\\caches\\8.13\\transforms\\00eeb73d329f60914ee7cf1a9183d8d3\\transformed\\core-1.9.0\\res\\values-en-rCA\\values-en-rCA.xml",
