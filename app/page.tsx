@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { TrackTable } from '@/components/tracks/TrackTable';
 import { NowPlayingCard } from '@/components/home/NowPlayingCard';
@@ -12,17 +12,46 @@ import {
   BILLBOARD_TOP_TRACKS,
   PUNJABI_VIRAL_TRACKS,
   LOFI_CHILL_BEATS,
+  ALL_INITIAL_TRACKS,
 } from '@/lib/constants/featuredTracks';
-import { Sparkles, Music2, Play, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, Music2, Play, ChevronLeft, ChevronRight, Heart, Flame, Clock } from 'lucide-react';
+
+interface DynamicCard {
+  track: Track;
+  type: 'liked' | 'recent' | 'trending';
+  label: string;
+  badgeBg: string;
+}
 
 export default function HomePage() {
   const [searchResults, setSearchResults] = useState<Track[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [liveTrending, setLiveTrending] = useState<Track[]>([]);
 
-  const { playTrackList } = useAudioPlayer();
-  const { theme } = usePlayerStore();
+  const { playTrackList, playTrack } = useAudioPlayer();
+  const { theme, likedTrackIds, recentlyPlayed } = usePlayerStore();
   const isDark = theme === 'dark';
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch live trending tracks from API on mount
+  useEffect(() => {
+    async function fetchTrending() {
+      try {
+        const res = await fetch('/api/trending?language=hindi');
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.tracks && Array.isArray(data.tracks)) {
+            setLiveTrending(data.tracks);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch live trending tracks:', err);
+      }
+    }
+    fetchTrending();
+  }, []);
 
   // Live Search via /api/search
   useEffect(() => {
@@ -50,7 +79,85 @@ export default function HomePage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const topchartTracks = BILLBOARD_TOP_TRACKS.slice(0, 5);
+  // Build Auto Dynamic Cards (Liked Songs + Recently Played + Live Trending)
+  const likedSet =
+    likedTrackIds instanceof Set
+      ? likedTrackIds
+      : new Set(Array.isArray(likedTrackIds) ? likedTrackIds : []);
+
+  const dynamicCards: DynamicCard[] = [];
+  const addedIds = new Set<string>();
+
+  // 1. Add User's Auto Liked Songs
+  const allAvailableTracks = [...ALL_INITIAL_TRACKS, ...(recentlyPlayed || []), ...(liveTrending || [])];
+  for (const t of allAvailableTracks) {
+    if (likedSet.has(t.id) && !addedIds.has(t.id)) {
+      addedIds.add(t.id);
+      dynamicCards.push({
+        track: t,
+        type: 'liked',
+        label: '❤️ Liked',
+        badgeBg: 'bg-red-600/90 text-white border-red-400/40 shadow-red-500/20',
+      });
+    }
+  }
+
+  // 2. Add User's Recently Played Songs
+  if (recentlyPlayed && Array.isArray(recentlyPlayed)) {
+    for (const t of recentlyPlayed) {
+      if (!addedIds.has(t.id)) {
+        addedIds.add(t.id);
+        dynamicCards.push({
+          track: t,
+          type: 'recent',
+          label: '🕒 Recent',
+          badgeBg: 'bg-blue-600/90 text-white border-blue-400/40 shadow-blue-500/20',
+        });
+      }
+    }
+  }
+
+  // 3. Add Live Trending Songs
+  const trendingSource = liveTrending.length > 0 ? liveTrending : BILLBOARD_TOP_TRACKS;
+  for (const t of trendingSource) {
+    if (!addedIds.has(t.id)) {
+      addedIds.add(t.id);
+      dynamicCards.push({
+        track: t,
+        type: 'trending',
+        label: '🔥 Trending',
+        badgeBg: 'bg-gradient-to-r from-orange-600 to-pink-600 text-white border-orange-400/40 shadow-orange-500/20',
+      });
+    }
+    if (dynamicCards.length >= 12) break;
+  }
+
+  // Ensure at least 5 fallback cards if list is small
+  if (dynamicCards.length < 5) {
+    for (const t of HINDI_TRENDING_TRACKS) {
+      if (!addedIds.has(t.id)) {
+        addedIds.add(t.id);
+        dynamicCards.push({
+          track: t,
+          type: 'trending',
+          label: '🔥 Live Top',
+          badgeBg: 'bg-indigo-600/90 text-white border-indigo-400/40 shadow-indigo-500/20',
+        });
+      }
+      if (dynamicCards.length >= 6) break;
+    }
+  }
+
+  const cardTracksList = dynamicCards.map((c) => c.track);
+
+  // Horizontal Scroll Handler for Cards Carousel
+  const handleScroll = (direction: 'left' | 'right') => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = direction === 'left' ? -350 : 350;
+      scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
   const popularTracks = [
     ...HINDI_TRENDING_TRACKS,
     ...BILLBOARD_TOP_TRACKS,
@@ -147,69 +254,95 @@ export default function HomePage() {
           </section>
         ) : (
           <>
-            {/* Top Billboard Topchart Section (Matching Reference Screenshot) */}
+            {/* Auto Liked, Recently Played & Live Trending Section (Replaces Static Billboard) */}
             <section className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2
-                  className={`text-xl font-extrabold tracking-tight ${
-                    isDark ? 'text-white' : 'text-slate-900'
-                  }`}
-                >
-                  Billboard Topchart
-                </h2>
+                <div className="flex items-center gap-2.5">
+                  <Flame className="w-5 h-5 text-orange-500 fill-orange-500 animate-pulse" />
+                  <h2
+                    className={`text-xl font-extrabold tracking-tight ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
+                    Your Mix & Live Trending
+                  </h2>
+                </div>
+
                 <div className="flex items-center gap-2">
                   <button
-                    className={`p-1.5 rounded-full border transition-colors ${
+                    onClick={() => handleScroll('left')}
+                    className={`p-2 rounded-full border transition-all active:scale-90 ${
                       isDark
-                        ? 'border-white/10 hover:bg-white/10 text-slate-400'
-                        : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                        ? 'border-white/10 hover:bg-white/10 text-slate-300'
+                        : 'border-slate-200 hover:bg-slate-100 text-slate-700 shadow-sm'
                     }`}
+                    title="Scroll Left"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
-                    className={`p-1.5 rounded-full border transition-colors ${
+                    onClick={() => handleScroll('right')}
+                    className={`p-2 rounded-full border transition-all active:scale-90 ${
                       isDark
-                        ? 'border-white/10 hover:bg-white/10 text-slate-400'
-                        : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                        ? 'border-white/10 hover:bg-white/10 text-slate-300'
+                        : 'border-slate-200 hover:bg-slate-100 text-slate-700 shadow-sm'
                     }`}
+                    title="Scroll Right"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Album Cards Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
-                {topchartTracks.map((track, idx) => (
+              {/* Dynamic Scrollable Card Carousel */}
+              <div
+                ref={scrollContainerRef}
+                className="flex items-center gap-5 overflow-x-auto custom-scrollbar pb-3 pt-1 scroll-smooth"
+              >
+                {dynamicCards.map((item, idx) => (
                   <div
-                    key={track.id}
-                    onClick={() => playTrackList(topchartTracks, idx)}
-                    className="group cursor-pointer space-y-3"
+                    key={`${item.track.id}-${idx}`}
+                    onClick={() => playTrackList(cardTracksList, idx)}
+                    className="group cursor-pointer space-y-3 shrink-0 w-44 sm:w-52"
                   >
-                    <div className="relative aspect-square rounded-[28px] overflow-hidden shadow-lg group-hover:shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1">
+                    <div className="relative aspect-square rounded-[28px] overflow-hidden shadow-xl group-hover:shadow-2xl transition-all duration-300 transform group-hover:-translate-y-1.5 border border-white/10">
                       <img
-                        src={track.coverUrl || '/samples/covers/cyberpunk.jpg'}
-                        alt={track.title}
+                        src={item.track.coverUrl || '/samples/covers/cyberpunk.jpg'}
+                        alt={item.track.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
-                      <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
-                          <Play className="w-5 h-5 fill-white ml-0.5" />
+
+                      {/* Top Dynamic Badge Tag (❤️ Liked, 🕒 Recent, 🔥 Trending) */}
+                      <div className="absolute top-3 left-3 z-10">
+                        <span
+                          className={`text-[10px] font-black tracking-wide px-2.5 py-1 rounded-full border backdrop-blur-md shadow-md ${item.badgeBg}`}
+                        >
+                          {item.label}
+                        </span>
+                      </div>
+
+                      {/* Hover Glassmorphism Play Button Overlay */}
+                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
+                        <div className="w-13 h-13 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-2xl group-hover:scale-110 active:scale-95 transition-transform border border-white/30">
+                          <Play className="w-6 h-6 fill-white ml-0.5" />
                         </div>
                       </div>
                     </div>
 
                     <div>
                       <h3
-                        className={`font-black text-sm truncate tracking-tight ${
+                        className={`font-black text-sm truncate tracking-tight group-hover:text-blue-500 transition-colors ${
                           isDark ? 'text-white' : 'text-slate-900'
                         }`}
                       >
-                        {track.title}
+                        {item.track.title}
                       </h3>
-                      <p className={`text-xs font-semibold truncate mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {track.artist}
+                      <p
+                        className={`text-xs font-semibold truncate mt-0.5 ${
+                          isDark ? 'text-slate-400' : 'text-slate-600'
+                        }`}
+                      >
+                        {item.track.artist}
                       </p>
                     </div>
                   </div>
@@ -217,7 +350,7 @@ export default function HomePage() {
               </div>
             </section>
 
-            {/* Bottom Split Grid: Most Popular Tracklist (2/3 width) + Now Playing Card (1/3 width) */}
+            {/* Bottom Split Grid: Most Popular Tracklist (2/3 width) + Original Now Playing Card (1/3 width) */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               {/* Left Column: Most Popular Tracklist */}
               <div className="lg:col-span-2 space-y-4">
@@ -247,7 +380,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Right Column: Now Playing Card */}
+              {/* Right Column: Original Now Playing Card */}
               <div className="lg:col-span-1 sticky top-24">
                 <NowPlayingCard />
               </div>
