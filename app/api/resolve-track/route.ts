@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ALL_INITIAL_TRACKS } from '@/lib/constants/featuredTracks';
 import { searchJioSaavnSongs } from '@/lib/utils/jiosaavn';
 import { searchInvidiousVideos } from '@/lib/utils/invidious';
+import { searchITunesSongs } from '@/lib/utils/itunes';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,17 +22,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(resolveCache.get(cacheKey));
     }
 
-    // 1. Tier 1: Try JioSaavn Open API Resolution for direct High-Bitrate HTML5 Stream
+    // ==========================================
+    // Tier 1: JioSaavn Direct 320kbps Stream Match
+    // ==========================================
     try {
       const saavnTracks = await searchJioSaavnSongs(query, 5);
-      if (saavnTracks.length > 0 && saavnTracks[0].audioUrl) {
-        const topMatch = saavnTracks[0];
+      const validSaavn = saavnTracks.find((t) => t.audioUrl && t.audioUrl.startsWith('http'));
+      if (validSaavn) {
         const result = {
-          audioUrl: topMatch.audioUrl,
-          youtubeId: topMatch.youtubeId || null,
-          title: topMatch.title,
-          artist: topMatch.artist,
-          coverUrl: topMatch.coverUrl,
+          audioUrl: validSaavn.audioUrl,
+          youtubeId: validSaavn.youtubeId || null,
+          title: validSaavn.title,
+          artist: validSaavn.artist,
+          coverUrl: validSaavn.coverUrl,
           source: 'saavn',
         };
         resolveCache.set(cacheKey, result);
@@ -39,14 +42,16 @@ export async function GET(request: NextRequest) {
       }
     } catch (err) {}
 
-    // 2. Tier 2: Try Invidious / Piped Resolution for YouTube Fallback
+    // ==========================================
+    // Tier 2: Invidious / Piped YouTube Stream Match
+    // ==========================================
     try {
       const ytTracks = await searchInvidiousVideos(query, 5);
-      if (ytTracks.length > 0) {
+      if (ytTracks.length > 0 && ytTracks[0].youtubeId) {
         const topMatch = ytTracks[0];
         const result = {
-          audioUrl: topMatch.audioUrl,
-          youtubeId: topMatch.youtubeId || topMatch.audioUrl,
+          audioUrl: topMatch.youtubeId,
+          youtubeId: topMatch.youtubeId,
           title: topMatch.title,
           artist: topMatch.artist,
           coverUrl: topMatch.coverUrl,
@@ -57,7 +62,32 @@ export async function GET(request: NextRequest) {
       }
     } catch (err) {}
 
-    // 3. Tier 3: Check local dataset
+    // ==========================================
+    // Tier 3: iTunes Metadata -> YouTube Stream Match
+    // ==========================================
+    try {
+      const iTunesTracks = await searchITunesSongs(query, 5);
+      if (iTunesTracks.length > 0) {
+        const topITunes = iTunesTracks[0];
+        const ytRetry = await searchInvidiousVideos(`${topITunes.title} ${topITunes.artist}`, 3);
+        if (ytRetry.length > 0 && ytRetry[0].youtubeId) {
+          const result = {
+            audioUrl: ytRetry[0].youtubeId,
+            youtubeId: ytRetry[0].youtubeId,
+            title: topITunes.title,
+            artist: topITunes.artist,
+            coverUrl: topITunes.coverUrl,
+            source: 'youtube',
+          };
+          resolveCache.set(cacheKey, result);
+          return NextResponse.json(result);
+        }
+      }
+    } catch (err) {}
+
+    // ==========================================
+    // Tier 4: Local Initial Tracks Match
+    // ==========================================
     const localMatch = ALL_INITIAL_TRACKS.find(
       (t) =>
         t.title.toLowerCase().includes(cacheKey) ||
@@ -70,20 +100,16 @@ export async function GET(request: NextRequest) {
         audioUrl: localMatch.audioUrl || null,
         youtubeId: localMatch.youtubeId || null,
         title: localMatch.title,
+        artist: localMatch.artist,
+        coverUrl: localMatch.coverUrl,
         source: localMatch.audioUrl ? 'saavn' : 'youtube',
       };
       resolveCache.set(cacheKey, result);
       return NextResponse.json(result);
     }
 
-    const defaultResult = {
-      audioUrl: null,
-      youtubeId: 'IJq0yyWug1k',
-      title: query,
-      source: 'youtube',
-    };
-    resolveCache.set(cacheKey, defaultResult);
-    return NextResponse.json(defaultResult);
+    // Return error status if audio cannot be resolved — NEVER return hardcoded Aashiqui 2!
+    return NextResponse.json({ error: 'Could not resolve track stream' }, { status: 404 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to resolve track' }, { status: 500 });
   }
