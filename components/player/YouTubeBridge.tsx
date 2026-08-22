@@ -8,6 +8,11 @@ declare global {
   interface Window {
     YT: any;
     onYouTubeIframeAPIReady: (() => void) | undefined;
+    AndroidNativePlayer?: {
+      playNativeAudio: (url: string, title: string, artist: string) => void;
+      pauseNativeAudio: () => void;
+      resumeNativeAudio: () => void;
+    };
   }
 }
 
@@ -145,6 +150,9 @@ export function YouTubeBridge() {
 
     setHandler('play', () => {
       setPlaying(true);
+      if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+        window.AndroidNativePlayer.resumeNativeAudio();
+      }
       if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
         nativeAudioRef.current.play().catch(() => {});
       } else {
@@ -157,6 +165,9 @@ export function YouTubeBridge() {
 
     setHandler('pause', () => {
       setPlaying(false);
+      if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+        window.AndroidNativePlayer.pauseNativeAudio();
+      }
       if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
         nativeAudioRef.current.pause();
       } else {
@@ -171,6 +182,9 @@ export function YouTubeBridge() {
     setHandler('nexttrack', () => playNext());
     setHandler('stop', () => {
       setPlaying(false);
+      if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+        window.AndroidNativePlayer.pauseNativeAudio();
+      }
       if (nativeAudioRef.current) nativeAudioRef.current.pause();
       if (silentAudioRef.current) silentAudioRef.current.pause();
     });
@@ -278,7 +292,7 @@ export function YouTubeBridge() {
     }, stepTime);
   };
 
-  // 4. Universal Track Audio Engine
+  // 4. Universal Track Audio Engine (Delegates to AndroidNativePlayer when inside APK)
   useEffect(() => {
     if (!currentTrack) return;
 
@@ -300,25 +314,40 @@ export function YouTubeBridge() {
 
       // Step 1: Track has direct HTTP audio stream URL
       if (isDirectAudioUrl && currentTrack.audioUrl) {
-        if (!isCancelled && nativeAudioRef.current) {
+        if (!isCancelled) {
           activeEngineRef.current = 'native';
           const finalSrc = currentTrack.audioUrl.startsWith('http')
             ? `/api/stream?url=${encodeURIComponent(currentTrack.audioUrl)}`
             : currentTrack.audioUrl;
-          nativeAudioRef.current.src = finalSrc;
-          nativeAudioRef.current.load();
-          nativeAudioRef.current.volume = isMuted ? 0 : volume;
 
-          const player = playerRef.current || usePlayerStore.getState().ytPlayer;
-          if (player && typeof player.pauseVideo === 'function') {
-            try { player.pauseVideo(); } catch (err) {}
+          // Delegate to Native Android MediaPlayer when inside APK App
+          if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+            try {
+              const fullHttpUrl = currentTrack.audioUrl.startsWith('http')
+                ? currentTrack.audioUrl
+                : `${window.location.origin}${currentTrack.audioUrl}`;
+              window.AndroidNativePlayer.playNativeAudio(
+                fullHttpUrl,
+                currentTrack.title,
+                currentTrack.artist
+              );
+            } catch (e) {}
           }
 
-          if (isPlayingRef.current) {
-            nativeAudioRef.current.play().catch((err) => {
-              console.warn('Native audio play error:', err);
-            });
-            if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
+          if (nativeAudioRef.current) {
+            nativeAudioRef.current.src = finalSrc;
+            nativeAudioRef.current.load();
+            nativeAudioRef.current.volume = isMuted ? 0 : volume;
+
+            const player = playerRef.current || usePlayerStore.getState().ytPlayer;
+            if (player && typeof player.pauseVideo === 'function') {
+              try { player.pauseVideo(); } catch (err) {}
+            }
+
+            if (isPlayingRef.current) {
+              nativeAudioRef.current.play().catch(() => {});
+              if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
+            }
           }
           return;
         }
@@ -332,18 +361,31 @@ export function YouTubeBridge() {
         if (res.ok) {
           const data = await res.json();
 
-          // A. Resolved direct HTTP audio stream (JioSaavn 320kbps / proxy)
-          if (data.audioUrl && data.audioUrl.startsWith('http') && nativeAudioRef.current) {
+          // A. Resolved direct HTTP audio stream
+          if (data.audioUrl && data.audioUrl.startsWith('http')) {
             if (!isCancelled) {
               activeEngineRef.current = 'native';
-              nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
-              nativeAudioRef.current.load();
-              nativeAudioRef.current.volume = isMuted ? 0 : volume;
-              if (isPlayingRef.current) {
-                nativeAudioRef.current.play().catch((err) => {
-                  console.warn('Resolved native audio play error:', err);
-                });
-                if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
+              const finalSrc = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
+
+              // Delegate to Native Android MediaPlayer when inside APK App
+              if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+                try {
+                  window.AndroidNativePlayer.playNativeAudio(
+                    data.audioUrl,
+                    currentTrack.title,
+                    currentTrack.artist
+                  );
+                } catch (e) {}
+              }
+
+              if (nativeAudioRef.current) {
+                nativeAudioRef.current.src = finalSrc;
+                nativeAudioRef.current.load();
+                nativeAudioRef.current.volume = isMuted ? 0 : volume;
+                if (isPlayingRef.current) {
+                  nativeAudioRef.current.play().catch(() => {});
+                  if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
+                }
               }
               return;
             }
@@ -424,9 +466,15 @@ export function YouTubeBridge() {
     if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
       nativeAudioRef.current.volume = isMuted ? 0 : volume;
       if (isPlaying) {
+        if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+          window.AndroidNativePlayer.resumeNativeAudio();
+        }
         nativeAudioRef.current.play().catch(() => {});
         if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
       } else {
+        if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+          window.AndroidNativePlayer.pauseNativeAudio();
+        }
         nativeAudioRef.current.pause();
         if (silentAudioRef.current) silentAudioRef.current.pause();
       }
@@ -586,7 +634,19 @@ export function YouTubeBridge() {
               const data = await res.json();
               if (data.audioUrl && data.audioUrl.startsWith('http') && nativeAudioRef.current) {
                 activeEngineRef.current = 'native';
-                nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
+                const finalSrc = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
+
+                if (typeof window !== 'undefined' && window.AndroidNativePlayer) {
+                  try {
+                    window.AndroidNativePlayer.playNativeAudio(
+                      data.audioUrl,
+                      currentTrack.title,
+                      currentTrack.artist
+                    );
+                  } catch (e) {}
+                }
+
+                nativeAudioRef.current.src = finalSrc;
                 nativeAudioRef.current.load();
                 nativeAudioRef.current.volume = usePlayerStore.getState().isMuted ? 0 : usePlayerStore.getState().volume;
                 nativeAudioRef.current.play().catch((err) => {

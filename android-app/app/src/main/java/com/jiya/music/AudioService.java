@@ -25,7 +25,8 @@ public class AudioService extends Service {
         super.onCreate();
         createNotificationChannel();
 
-        // Acquire Partial WakeLock to keep CPU active for audio decoding when screen turns off
+        // Acquire Partial WakeLock to keep CPU active for audio decoding when screen
+        // turns off
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (powerManager != null) {
             wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JiyaMusic::AudioServiceWakeLock");
@@ -38,8 +39,7 @@ public class AudioService extends Service {
         Intent notificationIntent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this, 0, notificationIntent,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
-        );
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Jiya Music")
@@ -60,8 +60,7 @@ public class AudioService extends Service {
             NotificationChannel serviceChannel = new NotificationChannel(
                     CHANNEL_ID,
                     "Jiya Music Background Playback Channel",
-                    NotificationManager.IMPORTANCE_LOW
-            );
+                    NotificationManager.IMPORTANCE_LOW);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(serviceChannel);

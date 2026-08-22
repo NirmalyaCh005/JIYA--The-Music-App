@@ -1,14 +1,18 @@
 package com.jiya.music;
 
 import android.annotation.SuppressLint;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -21,7 +25,53 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private AudioManager audioManager;
+    private AudioService audioService;
+    private boolean isBound = false;
     private static final String APP_URL = "https://jiya-kappa.vercel.app";
+
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            AudioService.LocalBinder binder = (AudioService.LocalBinder) service;
+            audioService = binder.getService();
+            isBound = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isBound = false;
+            audioService = null;
+        }
+    };
+
+    public class WebAppNativeInterface {
+        @JavascriptInterface
+        public void playNativeAudio(String streamUrl, String title, String artist) {
+            runOnUiThread(() -> {
+                if (isBound && audioService != null) {
+                    audioService.playStreamUrl(streamUrl, title, artist);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void pauseNativeAudio() {
+            runOnUiThread(() -> {
+                if (isBound && audioService != null) {
+                    audioService.pauseAudio();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void resumeNativeAudio() {
+            runOnUiThread(() -> {
+                if (isBound && audioService != null) {
+                    audioService.resumeAudio();
+                }
+            });
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -29,13 +79,13 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Keep screen awake while app is visible
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Start Native Foreground Audio Service to prevent Android OS from suspending background playback
-        startNativeAudioForegroundService();
+        // Bind Native Audio Service
+        Intent intent = new Intent(this, AudioService.class);
+        ContextCompat.startForegroundService(this, intent);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 
-        // Request Audio Focus
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         requestSystemAudioFocus();
 
@@ -57,6 +107,9 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
+        // Add Javascript Bridge Interface for Native Android MediaPlayer
+        webView.addJavascriptInterface(new WebAppNativeInterface(), "AndroidNativePlayer");
+
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -69,19 +122,6 @@ public class MainActivity extends AppCompatActivity {
 
         if (savedInstanceState == null) {
             webView.loadUrl(APP_URL);
-        }
-    }
-
-    private void startNativeAudioForegroundService() {
-        try {
-            Intent serviceIntent = new Intent(this, AudioService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ContextCompat.startForegroundService(this, serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
@@ -102,7 +142,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // Do NOT pause WebView execution so background audio streaming & screen-off playback continue uninterruptedly
         if (webView != null) {
             webView.resumeTimers();
         }
@@ -111,10 +150,18 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        // Keep timers & background playback active when app is minimized or screen is locked
         if (webView != null) {
             webView.resumeTimers();
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (isBound) {
+            unbindService(serviceConnection);
+            isBound = false;
+        }
+        super.onDestroy();
     }
 
     @Override
