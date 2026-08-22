@@ -91,8 +91,8 @@ export function Sidebar() {
       <aside
         className={`hidden lg:flex w-64 xl:w-72 shrink-0 flex-col h-full select-none z-30 transition-colors duration-300 border-r ${
           isDark
-            ? 'bg-[#0E1420]/95 backdrop-blur-xl border-white/10 text-slate-200'
-            : 'bg-white border-slate-200/80 text-slate-700 shadow-[2px_0_15px_rgba(0,0,0,0.02)]'
+            ? 'bg-[#0E1420]/75 backdrop-blur-2xl border-white/10 text-slate-200'
+            : 'bg-white/75 backdrop-blur-2xl border-slate-200/80 text-slate-700 shadow-[2px_0_15px_rgba(0,0,0,0.02)]'
         }`}
       >
         {/* Top Branding & Logo Header (Clickable for Full Screen Pop-Out) */}

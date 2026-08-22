@@ -81,8 +81,8 @@ export function PersistentPlayerBar() {
     <footer
       className={`fixed bottom-[72px] left-3 right-3 rounded-2xl border lg:rounded-none lg:border-none lg:fixed-none lg:bottom-0 lg:left-0 lg:right-0 lg:relative h-14 lg:h-24 shrink-0 px-3 lg:px-6 flex items-center justify-between select-none shadow-2xl transition-all duration-300 z-40 ${
         isDark
-          ? 'bg-[#0E1420]/95 backdrop-blur-2xl border-white/20 text-slate-100 shadow-black/80'
-          : 'bg-white/95 backdrop-blur-2xl border-slate-200/90 text-slate-800 shadow-xl'
+          ? 'bg-[#0E1420]/80 backdrop-blur-2xl border-white/20 text-slate-100 shadow-black/80'
+          : 'bg-white/80 backdrop-blur-2xl border-slate-200/90 text-slate-800 shadow-xl'
       }`}
     >
       {/* 1. Track Info & Cover Art */}

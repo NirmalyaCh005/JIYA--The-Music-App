@@ -21,7 +21,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className="flex-1 flex min-h-0 relative overflow-hidden">
+      {/* Aesthetic Blurred Background Image Layer */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden select-none">
+        <div
+          className="absolute -inset-10 bg-cover bg-center bg-no-repeat blur-[45px] scale-110 opacity-45 dark:opacity-40 transition-all duration-700 brightness-95 contrast-105"
+          style={{ backgroundImage: `url('/bg-hero.jpg')` }}
+        />
+        {/* Soft Ambient Dark Overlay for High-End Glassmorphism & Text Clarity */}
+        <div className="absolute inset-0 bg-slate-950/60 dark:bg-[#0B0F17]/75 backdrop-blur-md" />
+      </div>
+
+      <div className="flex-1 flex min-h-0 relative z-10 overflow-hidden">
         {/* Persistent Left Sidebar */}
         <Suspense fallback={<div className="w-64 shrink-0 h-full border-r border-slate-200 dark:border-white/10" />}>
           <Sidebar />

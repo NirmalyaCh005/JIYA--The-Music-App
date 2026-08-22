@@ -171,8 +171,8 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
     <header
       className={`h-16 lg:h-20 sticky top-0 z-20 w-full px-4 lg:px-10 flex items-center justify-between gap-3 select-none transition-colors duration-300 ${
         isDark
-          ? 'bg-[#0B0F17]/95 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/20'
-          : 'bg-white/95 backdrop-blur-xl border-b border-slate-200/80 shadow-md shadow-slate-900/5'
+          ? 'bg-[#0B0F17]/75 backdrop-blur-2xl border-b border-white/10 shadow-lg shadow-black/20'
+          : 'bg-white/75 backdrop-blur-2xl border-b border-slate-200/80 shadow-md shadow-slate-900/5'
       }`}
     >
       {/* Mobile Hamburger & Mobile Branding Logo */}
