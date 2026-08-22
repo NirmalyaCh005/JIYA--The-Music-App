@@ -45,7 +45,7 @@ export function mapJioSaavnSongToTrack(item: any): Track {
   }
   const coverUrl = upgradeCoverUrl(rawCover || item.coverUrl);
 
-  // Extract FULL-LENGTH audio URL from downloadUrl (downloadUrl[4] = 320kbps, downloadUrl[3] = 160kbps)
+  // Extract FULL-LENGTH audio URL from downloadUrl or media_url fields
   let fullAudioUrl: string | null = null;
   const dUrls = item.downloadUrl || item.download_url;
 
@@ -62,6 +62,12 @@ export function mapJioSaavnSongToTrack(item: any): Track {
       null;
   } else if (typeof dUrls === 'string') {
     fullAudioUrl = dUrls;
+  } else if (typeof item.media_url === 'string') {
+    fullAudioUrl = item.media_url;
+  } else if (typeof item.more_info?.media_url === 'string') {
+    fullAudioUrl = item.more_info.media_url;
+  } else if (typeof item.url === 'string' && (item.url.endsWith('.mp3') || item.url.endsWith('.mp4') || item.url.includes('saavncdn'))) {
+    fullAudioUrl = item.url;
   }
 
   // Ensure we NEVER select preview or jiotunepreview

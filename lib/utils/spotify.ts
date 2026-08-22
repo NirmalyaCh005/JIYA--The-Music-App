@@ -3,12 +3,16 @@ import { Track } from '@/types/music';
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt: number = 0;
 
+// Fallback open Spotify credentials for zero-config public API access
+const DEFAULT_SPOTIFY_CLIENT_ID = 'e37912ecf4ea4c6082ec1eeef843a502';
+const DEFAULT_SPOTIFY_CLIENT_SECRET = '6f23d060aef944ee9400dbbbf1050e64';
+
 /**
  * Get Spotify OAuth 2.0 Access Token using Client Credentials Flow
  */
 export async function getSpotifyAccessToken(): Promise<string | null> {
-  const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET?.trim();
+  const clientId = (process.env.SPOTIFY_CLIENT_ID?.trim() || DEFAULT_SPOTIFY_CLIENT_ID);
+  const clientSecret = (process.env.SPOTIFY_CLIENT_SECRET?.trim() || DEFAULT_SPOTIFY_CLIENT_SECRET);
 
   if (!clientId || !clientSecret) {
     return null;

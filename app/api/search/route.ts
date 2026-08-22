@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ALL_INITIAL_TRACKS } from '@/lib/constants/featuredTracks';
 import { searchSpotifyTracks } from '@/lib/utils/spotify';
 import { searchJioSaavnSongs } from '@/lib/utils/jiosaavn';
+import { searchITunesSongs } from '@/lib/utils/itunes';
 import { searchInvidiousVideos } from '@/lib/utils/invidious';
 import { prisma } from '@/lib/prisma';
 import { Track } from '@/types/music';
@@ -13,7 +14,7 @@ const searchCache = new Map<string, Track[]>();
 // Asynchronously persist tracks to Prisma SQLite database (dev.db)
 async function persistTracksToDatabase(tracks: Track[]) {
   try {
-    for (const t of tracks.slice(0, 10)) {
+    for (const t of tracks.slice(0, 15)) {
       if (!t.title || !t.artist || !t.id) continue;
       const audioUrl = t.audioUrl || t.youtubeId || '';
 
@@ -52,7 +53,7 @@ function formatUniformTrack(t: Partial<Track>): Track {
   const audioUrl =
     t.audioUrl ||
     t.youtubeId ||
-    (t.id ? t.id.replace(/^(spotify-|saavn-|yt-|trending-|hindi-|global-|punjabi-|lofi-)/, '') : '');
+    (t.id ? t.id.replace(/^(spotify-|saavn-|itunes-|yt-|trending-|hindi-|global-|punjabi-|lofi-)/, '') : '');
 
   return {
     id: t.id || `track-${Math.random().toString(36).substring(7)}`,
@@ -86,22 +87,45 @@ export async function GET(request: NextRequest) {
     let results: Track[] = [];
 
     // ==========================================
-    // Tier 1: Spotify Web API + JioSaavn 320kbps Streams
+    // Tier 1: JioSaavn + iTunes + Spotify APIs (Parallel Fetch)
     // ==========================================
     try {
-      const [spotifyTracks, saavnTracks] = await Promise.all([
-        searchSpotifyTracks(query, 10),
-        searchJioSaavnSongs(query, 15),
+      const [saavnTracks, iTunesTracks, spotifyTracks] = await Promise.all([
+        searchJioSaavnSongs(query, 20).catch(() => []),
+        searchITunesSongs(query, 15).catch(() => []),
+        searchSpotifyTracks(query, 15).catch(() => []),
       ]);
 
-      const validSaavn = saavnTracks.filter((t) => t.audioUrl && t.audioUrl.startsWith('http'));
-      const combinedTier1 = [...spotifyTracks, ...validSaavn];
+      // Combine results while preserving query relevance & deduplicating by title
+      const combinedMap = new Map<string, Track>();
 
-      if (combinedTier1.length > 0) {
-        results = combinedTier1.map((t) => formatUniformTrack(t));
+      // A. Prefer JioSaavn direct 320kbps tracks
+      for (const item of saavnTracks) {
+        const key = `${item.title.toLowerCase()}-${item.artist.toLowerCase()}`;
+        if (!combinedMap.has(key)) {
+          combinedMap.set(key, formatUniformTrack(item));
+        }
       }
+
+      // B. Merge iTunes tracks
+      for (const item of iTunesTracks) {
+        const key = `${item.title.toLowerCase()}-${item.artist.toLowerCase()}`;
+        if (!combinedMap.has(key)) {
+          combinedMap.set(key, formatUniformTrack(item));
+        }
+      }
+
+      // C. Merge Spotify tracks
+      for (const item of spotifyTracks) {
+        const key = `${item.title.toLowerCase()}-${item.artist.toLowerCase()}`;
+        if (!combinedMap.has(key)) {
+          combinedMap.set(key, formatUniformTrack(item));
+        }
+      }
+
+      results = Array.from(combinedMap.values());
     } catch (err) {
-      console.warn('Tier 1 Spotify/JioSaavn Search error, proceeding to Tier 2:', err);
+      console.warn('Tier 1 Search error:', err);
     }
 
     // ==========================================
@@ -114,12 +138,12 @@ export async function GET(request: NextRequest) {
           results = invidiousTracks.map((t) => formatUniformTrack(t));
         }
       } catch (err) {
-        console.warn('Tier 2 Invidious Search error, proceeding to Tier 3:', err);
+        console.warn('Tier 2 Invidious Search error:', err);
       }
     }
 
     // ==========================================
-    // Tier 3: Offline Seeded Catalog (Library & Search Never Empty)
+    // Tier 3: Local Offline Seeded Catalog
     // ==========================================
     if (results.length === 0) {
       const localMatches = ALL_INITIAL_TRACKS.filter(
@@ -130,8 +154,9 @@ export async function GET(request: NextRequest) {
           (t.genre && t.genre.toLowerCase().includes(cacheKey))
       );
 
-      const fallbackList = localMatches.length > 0 ? localMatches : ALL_INITIAL_TRACKS.slice(0, 10);
-      results = fallbackList.map((t) => formatUniformTrack(t));
+      if (localMatches.length > 0) {
+        results = localMatches.map((t) => formatUniformTrack(t));
+      }
     }
 
     // Sync non-empty search results to Prisma SQLite Database asynchronously
@@ -147,7 +172,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(results);
   } catch (error) {
-    const defaultFallback = ALL_INITIAL_TRACKS.slice(0, 8).map((t) => formatUniformTrack(t));
-    return NextResponse.json(defaultFallback);
+    return NextResponse.json([]);
   }
 }
