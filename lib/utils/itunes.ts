@@ -31,8 +31,8 @@ export async function searchITunesSongs(query: string, limit: number = 20): Prom
         genre: item.primaryGenreName || 'Music',
         duration: item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210,
         coverUrl: cover,
-        audioUrl: item.previewUrl || null,
-        source: item.previewUrl ? 'saavn' : 'youtube',
+        audioUrl: null, // Set to null to force resolution of FULL-LENGTH 320kbps stream or YouTube stream
+        source: 'youtube',
       };
     });
   } catch (err) {

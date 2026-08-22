@@ -224,13 +224,20 @@ export function YouTubeBridge() {
     let isCancelled = false;
 
     const loadTrackAudio = async () => {
+      const isPreviewUrl =
+        currentTrack.audioUrl &&
+        (currentTrack.audioUrl.includes('itunes.apple.com') ||
+          currentTrack.audioUrl.includes('preview') ||
+          currentTrack.audioUrl.includes('p.scdn.co'));
+
       const isDirectAudioUrl =
         currentTrack.audioUrl &&
+        !isPreviewUrl &&
         (currentTrack.audioUrl.startsWith('http://') ||
           currentTrack.audioUrl.startsWith('https://') ||
           currentTrack.audioUrl.startsWith('/'));
 
-      // 1. If track has direct HTTP / file audio URL (e.g. JioSaavn 320kbps stream or uploaded MP3)
+      // 1. If track has direct FULL-LENGTH HTTP / file audio URL (e.g. JioSaavn 320kbps stream or uploaded MP3)
       if (isDirectAudioUrl && currentTrack.audioUrl) {
         if (!isCancelled) {
           activeEngineRef.current = 'native';

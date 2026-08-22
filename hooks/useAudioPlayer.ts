@@ -31,10 +31,13 @@ export function useAudioPlayer() {
     seekToTime,
   } = usePlayerStore();
 
+  const isPreviewUrl = (url?: string | null) =>
+    !!url && (url.includes('itunes.apple.com') || url.includes('preview') || url.includes('p.scdn.co'));
+
   const playTrack = async (track: Track) => {
     if (!track) return;
 
-    if (!track.audioUrl && !track.youtubeId) {
+    if (!track.audioUrl || isPreviewUrl(track.audioUrl) || (!track.youtubeId && !track.audioUrl?.startsWith('http'))) {
       try {
         const res = await fetch(
           `/api/resolve-track?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`
@@ -62,7 +65,7 @@ export function useAudioPlayer() {
     if (!tracks || tracks.length === 0) return;
     const targetTrack = tracks[index];
 
-    if (targetTrack && !targetTrack.audioUrl && !targetTrack.youtubeId) {
+    if (targetTrack && (!targetTrack.audioUrl || isPreviewUrl(targetTrack.audioUrl) || (!targetTrack.youtubeId && !targetTrack.audioUrl?.startsWith('http')))) {
       try {
         const res = await fetch(
           `/api/resolve-track?q=${encodeURIComponent(`${targetTrack.title} ${targetTrack.artist}`)}`

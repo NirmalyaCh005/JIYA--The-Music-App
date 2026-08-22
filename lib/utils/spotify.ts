@@ -104,8 +104,8 @@ export async function searchSpotifyTracks(query: string, limit: number = 20): Pr
         genre: 'Spotify Global',
         duration,
         coverUrl,
-        audioUrl: item.preview_url || null,
-        source: item.preview_url ? 'saavn' : 'youtube',
+        audioUrl: null, // Set to null to force resolution of FULL-LENGTH 320kbps stream or YouTube stream
+        source: 'youtube',
       };
     });
   } catch (err) {
