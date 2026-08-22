@@ -34,8 +34,30 @@ export function useAudioPlayer() {
   const isPreviewUrl = (url?: string | null) =>
     !!url && (url.includes('itunes.apple.com') || url.includes('preview') || url.includes('p.scdn.co'));
 
+  // Prime / unlock HTML5 Audio context synchronously inside user gesture callstack for Android WebView
+  const primeUserGestureAudio = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+      const dummy = new Audio();
+      dummy.volume = 0.001;
+      const playPromise = dummy.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          // Silently catch NotAllowedError / autoplay rejection on first gesture
+        });
+      }
+    } catch (e) {}
+  };
+
   const playTrack = async (track: Track) => {
     if (!track) return;
+
+    // Execute gesture priming & setPlaying directly inside user click callstack
+    primeUserGestureAudio();
+    setPlaying(true);
 
     if (!track.audioUrl || isPreviewUrl(track.audioUrl) || (!track.youtubeId && !track.audioUrl?.startsWith('http'))) {
       try {
@@ -65,6 +87,10 @@ export function useAudioPlayer() {
     if (!tracks || tracks.length === 0) return;
     const targetTrack = tracks[index];
 
+    // Execute gesture priming & setPlaying directly inside user click callstack
+    primeUserGestureAudio();
+    setPlaying(true);
+
     if (targetTrack && (!targetTrack.audioUrl || isPreviewUrl(targetTrack.audioUrl) || (!targetTrack.youtubeId && !targetTrack.audioUrl?.startsWith('http')))) {
       try {
         const res = await fetch(
@@ -89,6 +115,11 @@ export function useAudioPlayer() {
     setQueue(tracks, index);
   };
 
+  const handleTogglePlayPause = () => {
+    primeUserGestureAudio();
+    togglePlayPause();
+  };
+
   return {
     currentTrack,
     queue,
@@ -107,7 +138,7 @@ export function useAudioPlayer() {
     clearQueue,
     playNext,
     playPrevious,
-    togglePlayPause,
+    togglePlayPause: handleTogglePlayPause,
     setPlaying,
     setVolume,
     toggleMute,

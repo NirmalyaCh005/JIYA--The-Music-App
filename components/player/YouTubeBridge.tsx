@@ -62,7 +62,6 @@ export function YouTubeBridge() {
         }
       };
       audio.onpause = () => {
-        // If paused while page is in background, re-trigger play to prevent OS background suspension
         if (document.hidden && isPlayingRef.current) {
           audio.play().catch(() => {});
         } else {
@@ -130,7 +129,7 @@ export function YouTubeBridge() {
     }
   }, [playNext, setCurrentTime, setDuration, setPlaying]);
 
-  // 2. Mobile MediaSession API Integration (Lock Screen, Status Bar Notification & Background Audio Controls)
+  // 2. Mobile MediaSession API Integration
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
 
@@ -207,14 +206,13 @@ export function YouTubeBridge() {
     });
   }, [currentTrack, isPlaying, playNext, playPrevious, seekToTime, setPlaying]);
 
-  // 3. Page Visibility & Screen Lock Event Listeners (Prevents Mobile OS Audio Suspension)
+  // 3. Page Visibility & Screen Lock Event Listeners
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleBackgroundPlayback = () => {
       const { isPlaying } = usePlayerStore.getState();
       if (isPlaying) {
-        // Keep active background audio session alive when Chrome is minimized or screen turns off
         if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
           nativeAudioRef.current.play().catch(() => {});
         }
@@ -309,7 +307,6 @@ export function YouTubeBridge() {
           currentTrack.audioUrl.startsWith('https://') ||
           currentTrack.audioUrl.startsWith('/'));
 
-      // 1. Full-Length Direct HTTP Audio Stream (JioSaavn 320kbps or Uploaded Track)
       if (isDirectAudioUrl && currentTrack.audioUrl) {
         if (!isCancelled) {
           activeEngineRef.current = 'native';
@@ -334,7 +331,6 @@ export function YouTubeBridge() {
         return;
       }
 
-      // 2. YouTube IFrame Audio Engine Fallback
       if (!isCancelled) {
         activeEngineRef.current = 'iframe';
         if (nativeAudioRef.current) nativeAudioRef.current.pause();
@@ -434,7 +430,7 @@ export function YouTubeBridge() {
     }
   }, [isPlaying, volume, isMuted]);
 
-  // 6. Dynamically Load YouTube IFrame API Script
+  // 6. Dynamically Load YouTube IFrame API Script with Explicit Mobile Origin & Autoplay Flags
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -442,7 +438,10 @@ export function YouTubeBridge() {
       if (!window.YT || !window.YT.Player) return;
       if (playerRef.current) return;
 
-      const currentOrigin = window.location.origin;
+      const currentOrigin =
+        typeof window !== 'undefined' && window.location.origin
+          ? window.location.origin
+          : 'https://jiya-kappa.vercel.app';
 
       playerRef.current = new window.YT.Player('jiya-yt-player', {
         height: '1',
@@ -516,7 +515,6 @@ export function YouTubeBridge() {
                   setPlaying(false);
                   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
                 } else {
-                  // If browser paused video when hidden/screen-off, keep silent native audio session alive!
                   if (isPlayingRef.current && silentAudioRef.current) {
                     silentAudioRef.current.play().catch(() => {});
                   }
@@ -575,6 +573,54 @@ export function YouTubeBridge() {
 
     return () => clearInterval(interval);
   }, [setCurrentTime, setDuration]);
+
+  // 8. 3-Second Watchdog Timer: Fallback to direct stream proxy (/api/stream?url=...) if YouTube IFrame stays at 0:00 for >3s on Android/WebView
+  useEffect(() => {
+    let watchdogTimer: NodeJS.Timeout | null = null;
+
+    if (isPlaying && activeEngineRef.current === 'iframe' && currentTrack) {
+      watchdogTimer = setTimeout(async () => {
+        const time = usePlayerStore.getState().currentTime;
+        const currentEng = activeEngineRef.current;
+        const isStillPlaying = usePlayerStore.getState().isPlaying;
+
+        if (time === 0 && currentEng === 'iframe' && isStillPlaying) {
+          console.warn('YouTube IFrame stalled at 0:00 for >3s on Android WebView. Falling back to direct stream proxy...');
+
+          let audioUrl = currentTrack.audioUrl;
+          if (!audioUrl || audioUrl.includes('itunes.apple.com') || audioUrl.includes('preview')) {
+            try {
+              const res = await fetch(
+                `/api/resolve-track?q=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
+              );
+              if (res.ok) {
+                const data = await res.json();
+                if (data.audioUrl && data.audioUrl.startsWith('http')) {
+                  audioUrl = data.audioUrl;
+                }
+              }
+            } catch (err) {}
+          }
+
+          if (audioUrl && nativeAudioRef.current) {
+            activeEngineRef.current = 'native';
+            const finalSrc = audioUrl.startsWith('http')
+              ? `/api/stream?url=${encodeURIComponent(audioUrl)}`
+              : audioUrl;
+            nativeAudioRef.current.src = finalSrc;
+            nativeAudioRef.current.volume = usePlayerStore.getState().isMuted ? 0 : usePlayerStore.getState().volume;
+            nativeAudioRef.current.play().catch((e) => {
+              console.warn('Fallback native audio play error:', e);
+            });
+          }
+        }
+      }, 3000);
+    }
+
+    return () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+    };
+  }, [isPlaying, currentTrack]);
 
   return (
     <div
