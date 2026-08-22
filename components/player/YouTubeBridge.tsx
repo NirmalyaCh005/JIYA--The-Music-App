@@ -173,47 +173,39 @@ export function YouTubeBridge() {
   };
 
   const crossfadeTrackChange = (loadTrackFn: () => void) => {
-    const { isCrossfadeEnabled, crossfadeDuration, volume, isMuted } = usePlayerStore.getState();
+    const { volume, isMuted } = usePlayerStore.getState();
 
-    // If crossfade is disabled, muted, or no previous track was playing, load directly
-    if (!isCrossfadeEnabled || isMuted || volume === 0 || !isPlayingRef.current) {
-      loadTrackFn();
-      applyVolumeFaded(volume);
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
+
+    // Load incoming track immediately without 2-second delay
+    loadTrackFn();
+
+    if (isMuted || volume === 0) {
+      applyVolumeFaded(0);
       return;
     }
 
-    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+    // Smooth 180ms micro-fade-in for instant response
+    let currentVol = 0.1 * volume;
+    applyVolumeFaded(currentVol);
 
-    const durationMs = (crossfadeDuration || 2) * 1000;
-    const fadeSteps = 12;
-    const stepTime = Math.max(25, Math.floor((durationMs / 2) / fadeSteps));
-    let currentVol = volume;
-    const stepAmount = volume / fadeSteps;
+    const steps = 6;
+    const stepAmount = (volume - currentVol) / steps;
+    const stepTime = 30;
 
-    // Phase 1: Smooth Fade-Out of outgoing track
     fadeIntervalRef.current = setInterval(() => {
-      currentVol -= stepAmount;
-      if (currentVol <= 0) {
-        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-        applyVolumeFaded(0);
-
-        // Phase 2: Load incoming track
-        loadTrackFn();
-
-        // Phase 3: Smooth Fade-In of incoming track
-        let fadeInVol = 0;
-        const fadeInStep = volume / fadeSteps;
-        fadeIntervalRef.current = setInterval(() => {
-          fadeInVol += fadeInStep;
-          if (fadeInVol >= volume) {
-            fadeInVol = volume;
-            if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-          }
-          applyVolumeFaded(fadeInVol);
-        }, stepTime);
-      } else {
-        applyVolumeFaded(currentVol);
+      currentVol += stepAmount;
+      if (currentVol >= volume) {
+        currentVol = volume;
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+          fadeIntervalRef.current = null;
+        }
       }
+      applyVolumeFaded(currentVol);
     }, stepTime);
   };
 
