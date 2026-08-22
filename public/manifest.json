@@ -1,0 +1,28 @@
+{
+  "background_color": "#ffffff",
+  "description": "Jiya is a full-stack, production-ready music streaming and storage platform built with Next.js 14, Tailwind CSS, Zustand, and YouTube IFrame Audio Engine.",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "Jiya",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "Jiya",
+  "start_url": "/",
+  "theme_color": "#0B0F17",
+  "icons": [
+    {
+      "src": "https://jiya-kappa.vercel.app/logo.png",
+      "type": "image/png",
+      "sizes": "1024x1024",
+      "isSquare": true,
+      "isPng": true,
+      "isWebp": false,
+      "isJpg": false,
+      "width": 1024,
+      "is512x512": false,
+      "is256x256": false,
+      "is192x192": false
+    }
+  ],
+  "id": "jiya-music"
+}
