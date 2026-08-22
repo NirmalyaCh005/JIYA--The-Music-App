@@ -1,12 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ALL_INITIAL_TRACKS } from '@/lib/constants/featuredTracks';
+import { searchSpotifyTracks } from '@/lib/utils/spotify';
 import { searchJioSaavnSongs } from '@/lib/utils/jiosaavn';
 import { searchInvidiousVideos } from '@/lib/utils/invidious';
+import { prisma } from '@/lib/prisma';
 import { Track } from '@/types/music';
 
 export const dynamic = 'force-dynamic';
 
 const searchCache = new Map<string, Track[]>();
+
+// Asynchronously persist tracks to Prisma SQLite database (dev.db)
+async function persistTracksToDatabase(tracks: Track[]) {
+  try {
+    for (const t of tracks.slice(0, 10)) {
+      if (!t.title || !t.artist || !t.id) continue;
+      const audioUrl = t.audioUrl || t.youtubeId || '';
+
+      await prisma.track.upsert({
+        where: { id: t.id },
+        update: {
+          title: t.title,
+          artist: t.artist,
+          album: t.album || 'Single',
+          duration: t.duration || 210,
+          coverUrl: t.coverUrl || '',
+          audioUrl: audioUrl,
+        },
+        create: {
+          id: t.id,
+          title: t.title,
+          artist: t.artist,
+          album: t.album || 'Single',
+          genre: t.genre || 'General',
+          duration: t.duration || 210,
+          coverUrl: t.coverUrl || '',
+          audioUrl: audioUrl,
+        },
+      });
+    }
+  } catch (err) {
+    // Non-blocking database sync
+  }
+}
 
 // Helper to strictly format track output according to uniform Track schema
 function formatUniformTrack(t: Partial<Track>): Track {
@@ -16,7 +52,7 @@ function formatUniformTrack(t: Partial<Track>): Track {
   const audioUrl =
     t.audioUrl ||
     t.youtubeId ||
-    (t.id ? t.id.replace(/^(saavn-|yt-|trending-|hindi-|global-|punjabi-|lofi-)/, '') : '');
+    (t.id ? t.id.replace(/^(spotify-|saavn-|yt-|trending-|hindi-|global-|punjabi-|lofi-)/, '') : '');
 
   return {
     id: t.id || `track-${Math.random().toString(36).substring(7)}`,
@@ -50,16 +86,22 @@ export async function GET(request: NextRequest) {
     let results: Track[] = [];
 
     // ==========================================
-    // Tier 1: JioSaavn Mirrors (Direct 320kbps streams)
+    // Tier 1: Spotify Web API + JioSaavn 320kbps Streams
     // ==========================================
     try {
-      const saavnTracks = await searchJioSaavnSongs(query, 20);
+      const [spotifyTracks, saavnTracks] = await Promise.all([
+        searchSpotifyTracks(query, 10),
+        searchJioSaavnSongs(query, 15),
+      ]);
+
       const validSaavn = saavnTracks.filter((t) => t.audioUrl && t.audioUrl.startsWith('http'));
-      if (validSaavn.length > 0) {
-        results = validSaavn.map((t) => formatUniformTrack(t));
+      const combinedTier1 = [...spotifyTracks, ...validSaavn];
+
+      if (combinedTier1.length > 0) {
+        results = combinedTier1.map((t) => formatUniformTrack(t));
       }
     } catch (err) {
-      console.warn('Tier 1 JioSaavn Search failed, proceeding to Tier 2:', err);
+      console.warn('Tier 1 Spotify/JioSaavn Search error, proceeding to Tier 2:', err);
     }
 
     // ==========================================
@@ -72,7 +114,7 @@ export async function GET(request: NextRequest) {
           results = invidiousTracks.map((t) => formatUniformTrack(t));
         }
       } catch (err) {
-        console.warn('Tier 2 Invidious Search failed, proceeding to Tier 3:', err);
+        console.warn('Tier 2 Invidious Search error, proceeding to Tier 3:', err);
       }
     }
 
@@ -92,9 +134,11 @@ export async function GET(request: NextRequest) {
       results = fallbackList.map((t) => formatUniformTrack(t));
     }
 
-    // Cache non-empty results (LRU limit 300 entries)
+    // Sync non-empty search results to Prisma SQLite Database asynchronously
     if (results.length > 0) {
+      persistTracksToDatabase(results).catch(() => {});
       searchCache.set(cacheKey, results);
+
       if (searchCache.size > 300) {
         const firstKey = searchCache.keys().next().value;
         if (firstKey) searchCache.delete(firstKey);
@@ -103,7 +147,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(results);
   } catch (error) {
-    // Ultimate fallback if any error occurs: return pre-seeded tracks so search never fails
     const defaultFallback = ALL_INITIAL_TRACKS.slice(0, 8).map((t) => formatUniformTrack(t));
     return NextResponse.json(defaultFallback);
   }
