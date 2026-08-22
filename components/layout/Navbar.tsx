@@ -321,30 +321,7 @@ export function Navbar({ onSearch, selectedGenre = 'All', onGenreSelect }: Navba
         </div>
       </div>
 
-      {/* Center Section & Category Navigation Pills */}
-      <div className="hidden md:flex items-center gap-1.5 overflow-x-auto py-1 custom-scrollbar max-w-2xl px-2">
-        {navPills.map((pill) => {
-          const isActive =
-            (pill.genre && selectedGenre.toLowerCase() === pill.genre.toLowerCase() && (pathname === '/' || pathname === '/explore')) ||
-            (!pill.genre && pathname === pill.href);
 
-          return (
-            <button
-              key={pill.label}
-              onClick={() => handlePillClick(pill)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-all duration-200 ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 scale-105'
-                  : isDark
-                  ? 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'
-                  : 'bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 shadow-sm'
-              }`}
-            >
-              {pill.label}
-            </button>
-          );
-        })}
-      </div>
 
       {/* Right Action Icons & Upload Button */}
       <div className="flex items-center gap-2.5 shrink-0 relative">

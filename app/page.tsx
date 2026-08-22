@@ -297,7 +297,7 @@ export default function HomePage() {
               {/* Dynamic Scrollable Card Carousel */}
               <div
                 ref={scrollContainerRef}
-                className="flex items-center gap-5 overflow-x-auto custom-scrollbar pb-3 pt-1 scroll-smooth"
+                className="flex items-center gap-5 overflow-x-auto no-scrollbar pb-3 pt-1 scroll-smooth"
               >
                 {dynamicCards.map((item, idx) => (
                   <div

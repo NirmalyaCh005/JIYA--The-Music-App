@@ -23,7 +23,12 @@
 /* Global Ultra-Sleek Glassmorphism Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
+  height: 0px;
+}
+
+::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0px !important;
 }
 
 ::-webkit-scrollbar-track {
@@ -41,6 +46,22 @@
 
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Hide horizontal scrollbars across all browsers for ultra-clean professional look */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  height: 0px !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0px !important;
 }
 
 /* Firefox Scrollbar */
