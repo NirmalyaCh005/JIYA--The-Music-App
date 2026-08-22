@@ -350,38 +350,9 @@ export default function HomePage() {
               </div>
             </section>
 
-            {/* Bottom Split Grid: Most Popular Tracklist (2/3 width) + Original Now Playing Card (1/3 width) */}
+            {/* Right / Center Column: Now Playing Card */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
-              {/* Left Column: Most Popular Tracklist */}
-              <div className="lg:col-span-2 space-y-3.5 sm:space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2
-                      className={`text-lg sm:text-xl font-extrabold tracking-tight ${
-                        isDark ? 'text-white' : 'text-slate-900'
-                      }`}
-                    >
-                      Most Popular
-                    </h2>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      {filteredPopularTracks.length} Songs
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  className={`p-3.5 sm:p-6 rounded-[24px] sm:rounded-[32px] border max-h-[480px] overflow-y-auto custom-scrollbar backdrop-blur-2xl transition-colors duration-300 ${
-                    isDark
-                      ? 'bg-[#151D2A]/70 border-white/10 shadow-2xl'
-                      : 'bg-white/75 border-slate-100 shadow-[0_15px_35px_rgba(0,0,0,0.04)]'
-                  }`}
-                >
-                  <TrackTable tracks={filteredPopularTracks} />
-                </div>
-              </div>
-
-              {/* Right Column: Original Now Playing Card */}
-              <div className="lg:col-span-1 sticky top-24">
+              <div className="lg:col-span-3 max-w-xl mx-auto w-full">
                 <NowPlayingCard />
               </div>
             </section>
