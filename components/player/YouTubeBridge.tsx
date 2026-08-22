@@ -11,10 +11,15 @@ declare global {
   }
 }
 
+// 1-Second PCM Silent WAV Audio Data URI for Mobile Background Keep-Alive
+const SILENT_WAV_URI =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
 export function YouTubeBridge() {
   const playerRef = useRef<any | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const nativeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
   const isPlayingRef = useRef<boolean>(false);
   const activeEngineRef = useRef<'native' | 'iframe'>('iframe');
 
@@ -37,20 +42,35 @@ export function YouTubeBridge() {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // 1. Initialize Native HTML5 Audio Element for Uninterrupted Mobile Background Streaming
+  // 1. Initialize Native HTML5 Audio Engine + Silent Loop Audio Keep-Alive for Uninterrupted Mobile Streaming
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    // A. Primary Native Audio Engine (for direct 320kbps streams / uploaded tracks)
     if (!nativeAudioRef.current) {
       const audio = new Audio();
       audio.preload = 'auto';
+      audio.setAttribute('playsinline', 'true');
+      audio.setAttribute('webkit-playsinline', 'true');
+      audio.setAttribute('x5-playsinline', 'true');
       nativeAudioRef.current = audio;
 
       audio.onplay = () => {
         setPlaying(true);
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
       };
       audio.onpause = () => {
-        if (!document.hidden) setPlaying(false);
+        // If paused while page is in background, re-trigger play to prevent OS background suspension
+        if (document.hidden && isPlayingRef.current) {
+          audio.play().catch(() => {});
+        } else {
+          setPlaying(false);
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'paused';
+          }
+        }
       };
       audio.onended = () => {
         setPlaying(false);
@@ -98,24 +118,36 @@ export function YouTubeBridge() {
         }
       };
     }
+
+    // B. Mobile Background Keep-Alive Audio Element (Guarantees Android Lockscreen & Recent Apps Audio Session)
+    if (!silentAudioRef.current) {
+      const silent = new Audio(SILENT_WAV_URI);
+      silent.loop = true;
+      silent.volume = 0.0001;
+      silent.setAttribute('playsinline', 'true');
+      silent.setAttribute('webkit-playsinline', 'true');
+      silentAudioRef.current = silent;
+    }
   }, [playNext, setCurrentTime, setDuration, setPlaying]);
 
-  // 2. Mobile MediaSession API Integration (Lock Screen & Background Notification Center Controls)
+  // 2. Mobile MediaSession API Integration (Lock Screen, Status Bar Notification & Background Audio Controls)
   useEffect(() => {
     if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
 
     if (currentTrack) {
+      const cover = currentTrack.coverUrl || '/logo.png';
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title,
         artist: currentTrack.artist,
         album: currentTrack.album || 'Jiya Music',
         artwork: [
-          { src: currentTrack.coverUrl || '', sizes: '96x96', type: 'image/jpeg' },
-          { src: currentTrack.coverUrl || '', sizes: '128x128', type: 'image/jpeg' },
-          { src: currentTrack.coverUrl || '', sizes: '192x192', type: 'image/jpeg' },
-          { src: currentTrack.coverUrl || '', sizes: '512x512', type: 'image/jpeg' },
+          { src: cover, sizes: '96x96', type: 'image/jpeg' },
+          { src: cover, sizes: '128x128', type: 'image/jpeg' },
+          { src: cover, sizes: '192x192', type: 'image/jpeg' },
+          { src: cover, sizes: '512x512', type: 'image/jpeg' },
         ],
       });
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
 
     const setHandler = (action: MediaSessionAction, handler: ((details?: any) => void) | null) => {
@@ -132,6 +164,8 @@ export function YouTubeBridge() {
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
         if (player && typeof player.playVideo === 'function') player.playVideo();
       }
+      if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     });
 
     setHandler('pause', () => {
@@ -142,10 +176,17 @@ export function YouTubeBridge() {
         const player = playerRef.current || usePlayerStore.getState().ytPlayer;
         if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
       }
+      if (silentAudioRef.current) silentAudioRef.current.pause();
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     });
 
     setHandler('previoustrack', () => playPrevious());
     setHandler('nexttrack', () => playNext());
+    setHandler('stop', () => {
+      setPlaying(false);
+      if (nativeAudioRef.current) nativeAudioRef.current.pause();
+      if (silentAudioRef.current) silentAudioRef.current.pause();
+    });
     setHandler('seekto', (details: any) => {
       if (details?.seekTime !== undefined && details?.seekTime !== null) {
         seekToTime(details.seekTime);
@@ -154,7 +195,48 @@ export function YouTubeBridge() {
         }
       }
     });
-  }, [currentTrack, playNext, playPrevious, seekToTime, setPlaying]);
+    setHandler('seekbackward', (details: any) => {
+      const skipTime = details?.seekOffset || 10;
+      const { currentTime } = usePlayerStore.getState();
+      seekToTime(Math.max(0, currentTime - skipTime));
+    });
+    setHandler('seekforward', (details: any) => {
+      const skipTime = details?.seekOffset || 10;
+      const { currentTime, duration } = usePlayerStore.getState();
+      seekToTime(Math.min(duration, currentTime + skipTime));
+    });
+  }, [currentTrack, isPlaying, playNext, playPrevious, seekToTime, setPlaying]);
+
+  // 3. Page Visibility & Screen Lock Event Listeners (Prevents Mobile OS Audio Suspension)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleBackgroundPlayback = () => {
+      const { isPlaying } = usePlayerStore.getState();
+      if (isPlaying) {
+        // Keep active background audio session alive when Chrome is minimized or screen turns off
+        if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
+          nativeAudioRef.current.play().catch(() => {});
+        }
+        if (silentAudioRef.current) {
+          silentAudioRef.current.play().catch(() => {});
+        }
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleBackgroundPlayback);
+    window.addEventListener('pagehide', handleBackgroundPlayback);
+    window.addEventListener('blur', handleBackgroundPlayback);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleBackgroundPlayback);
+      window.removeEventListener('pagehide', handleBackgroundPlayback);
+      window.removeEventListener('blur', handleBackgroundPlayback);
+    };
+  }, []);
 
   const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -180,7 +262,6 @@ export function YouTubeBridge() {
       fadeIntervalRef.current = null;
     }
 
-    // Load incoming track immediately without 2-second delay
     loadTrackFn();
 
     if (isMuted || volume === 0) {
@@ -188,7 +269,6 @@ export function YouTubeBridge() {
       return;
     }
 
-    // Smooth 180ms micro-fade-in for instant response
     let currentVol = 0.1 * volume;
     applyVolumeFaded(currentVol);
 
@@ -209,7 +289,7 @@ export function YouTubeBridge() {
     }, stepTime);
   };
 
-  // 3. Direct YouTube IFrame & Native Audio Engine Switcher with Crossfading
+  // 4. Direct Engine Switcher (Native 320kbps HTTP Stream vs YouTube IFrame Fallback)
   useEffect(() => {
     if (!currentTrack) return;
 
@@ -229,7 +309,7 @@ export function YouTubeBridge() {
           currentTrack.audioUrl.startsWith('https://') ||
           currentTrack.audioUrl.startsWith('/'));
 
-      // 1. If track has direct FULL-LENGTH HTTP / file audio URL (e.g. JioSaavn 320kbps stream or uploaded MP3)
+      // 1. Full-Length Direct HTTP Audio Stream (JioSaavn 320kbps or Uploaded Track)
       if (isDirectAudioUrl && currentTrack.audioUrl) {
         if (!isCancelled) {
           activeEngineRef.current = 'native';
@@ -240,7 +320,6 @@ export function YouTubeBridge() {
             nativeAudioRef.current.src = finalSrc;
             nativeAudioRef.current.volume = isMuted ? 0 : volume;
 
-            // Pause YouTube IFrame if active
             const player = playerRef.current || usePlayerStore.getState().ytPlayer;
             if (player && typeof player.pauseVideo === 'function') {
               try { player.pauseVideo(); } catch (err) {}
@@ -248,13 +327,14 @@ export function YouTubeBridge() {
 
             if (isPlayingRef.current) {
               nativeAudioRef.current.play().catch(() => {});
+              if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
             }
           }
         }
         return;
       }
 
-      // 2. Direct YouTube IFrame Player Engine
+      // 2. YouTube IFrame Audio Engine Fallback
       if (!isCancelled) {
         activeEngineRef.current = 'iframe';
         if (nativeAudioRef.current) nativeAudioRef.current.pause();
@@ -271,7 +351,6 @@ export function YouTubeBridge() {
               if (data.youtubeId) {
                 cleanYtId = sanitizeYouTubeId(data.youtubeId);
               } else if (data.audioUrl && data.audioUrl.startsWith('http')) {
-                // If resolved to direct audio URL dynamically
                 if (nativeAudioRef.current) {
                   activeEngineRef.current = 'native';
                   nativeAudioRef.current.src = `/api/stream?url=${encodeURIComponent(data.audioUrl)}`;
@@ -295,6 +374,9 @@ export function YouTubeBridge() {
               if (typeof player.playVideo === 'function') {
                 try { player.playVideo(); } catch (err) {}
               }
+              if (isPlayingRef.current && silentAudioRef.current) {
+                silentAudioRef.current.play().catch(() => {});
+              }
             }
           } catch (e) {
             console.warn('Error loading video into YouTube IFrame:', e);
@@ -315,14 +397,16 @@ export function YouTubeBridge() {
     };
   }, [currentTrack]);
 
-  // 4. Sync Play / Pause & Volume with Active Audio Engine
+  // 5. Sync Play/Pause State & Volume across Audio Engine & Background Keep-Alive
   useEffect(() => {
     if (activeEngineRef.current === 'native' && nativeAudioRef.current) {
       nativeAudioRef.current.volume = isMuted ? 0 : volume;
       if (isPlaying) {
         nativeAudioRef.current.play().catch(() => {});
+        if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
       } else {
         nativeAudioRef.current.pause();
+        if (silentAudioRef.current) silentAudioRef.current.pause();
       }
     } else {
       const player = playerRef.current || usePlayerStore.getState().ytPlayer;
@@ -334,17 +418,23 @@ export function YouTubeBridge() {
             if (state !== 1 && state !== 3 && typeof player.playVideo === 'function') {
               player.playVideo();
             }
+            if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
           } else {
             if ((state === 1 || state === 3) && typeof player.pauseVideo === 'function') {
               player.pauseVideo();
             }
+            if (silentAudioRef.current) silentAudioRef.current.pause();
           }
         } catch (e) {}
       }
     }
+
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    }
   }, [isPlaying, volume, isMuted]);
 
-  // 5. Dynamically Load YouTube IFrame API Script (Fallback Engine)
+  // 6. Dynamically Load YouTube IFrame API Script
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -381,7 +471,6 @@ export function YouTubeBridge() {
               event.target.setVolume(isMuted ? 0 : volume * 100);
             } catch (err) {}
 
-            // Immediately resolve & load active track when player becomes ready
             const track = usePlayerStore.getState().currentTrack;
             if (track && !track.audioUrl) {
               const loadReadyTrack = async () => {
@@ -407,6 +496,9 @@ export function YouTubeBridge() {
                     if (typeof event.target.playVideo === 'function') {
                       event.target.playVideo();
                     }
+                    if (isPlayingRef.current && silentAudioRef.current) {
+                      silentAudioRef.current.play().catch(() => {});
+                    }
                   } catch (err) {}
                 }
               };
@@ -415,11 +507,21 @@ export function YouTubeBridge() {
           },
           onStateChange: (event: any) => {
             if (activeEngineRef.current === 'iframe') {
-              if (event.data === 1) {
+              if (event.data === 1) { // PLAYING
                 setPlaying(true);
-              } else if (event.data === 2) {
-                if (!document.hidden) setPlaying(false);
-              } else if (event.data === 0) {
+                if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+              } else if (event.data === 2) { // PAUSED
+                if (!document.hidden) {
+                  setPlaying(false);
+                  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+                } else {
+                  // If browser paused video when hidden/screen-off, keep silent native audio session alive!
+                  if (isPlayingRef.current && silentAudioRef.current) {
+                    silentAudioRef.current.play().catch(() => {});
+                  }
+                }
+              } else if (event.data === 0) { // ENDED
                 setPlaying(false);
                 playNext();
               }
@@ -443,7 +545,7 @@ export function YouTubeBridge() {
     }
   }, []);
 
-  // 6. Progress Bar & MediaSession Sync Interval for YouTube IFrame Fallback
+  // 7. Progress Bar & MediaSession Position Sync Interval
   useEffect(() => {
     const interval = setInterval(() => {
       if (activeEngineRef.current === 'iframe') {

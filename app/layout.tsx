@@ -19,6 +19,20 @@ export const metadata: Metadata = {
   icons: {
     icon: '/logo.png',
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Jiya Music',
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  themeColor: '#0B0F17',
 };
 
 import React, { Suspense } from 'react';
