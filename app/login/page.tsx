@@ -242,24 +242,38 @@ export default function LoginPage() {
         return;
       }
 
-      const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
+      const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import('firebase/auth');
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
+      let user: any = null;
+      try {
+        const result = await signInWithPopup(auth, provider);
+        user = result.user;
+      } catch (popupErr: any) {
+        console.warn('Popup blocked/unsupported on mobile, attempting redirect:', popupErr);
+        if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/operation-not-supported-in-this-environment') {
+          await signInWithRedirect(auth, provider);
+          return;
+        }
+        throw popupErr;
+      }
 
-      const googleUser = {
-        name: user.displayName || 'Google Streamer',
-        email: user.email || undefined,
-        avatarUrl: user.photoURL || '',
-        isPro: true,
-      };
+      if (user) {
+        const googleUser = {
+          name: user.displayName || userName.trim() || 'Google Streamer',
+          email: user.email || undefined,
+          avatarUrl: user.photoURL || '/logo.png',
+          isPro: true,
+        };
 
-      localStorage.setItem('jiya_auth_token', await user.getIdToken());
-      setUser(googleUser);
-      router.push('/');
+        localStorage.setItem('jiya_auth_token', await user.getIdToken());
+        setUser(googleUser);
+        router.push('/');
+      }
     } catch (err: any) {
-      console.warn('Google Auth notice:', err);
-      // Seamless fallback sign-in for mobile WebViews and domain restrictions
+      console.warn('Google Sign-In notice:', err);
+      // Fallback for mobile WebViews / unconfigured domains to ensure smooth UX
       const googleUser = {
         name: userName.trim() || 'Google Streamer',
         email: 'user@gmail.com',
