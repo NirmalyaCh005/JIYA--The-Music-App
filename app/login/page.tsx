@@ -49,7 +49,20 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const setupRecaptcha = () => {
+    if (!(window as any).recaptchaVerifier) {
+      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        callback: (response: any) => {
+          // reCAPTCHA solved, allow signInWithPhoneNumber.
+        }
+      });
+    }
+  };
 
   // 30-Second Countdown Timer for Resend OTP
   useEffect(() => {
