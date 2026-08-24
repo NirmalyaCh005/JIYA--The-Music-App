@@ -56,7 +56,7 @@ export function BottomSearchBar() {
   if (pathname === '/login') return null;
 
   return (
-    <div className="fixed bottom-20 left-4 right-4 z-40 lg:hidden" ref={searchRef}>
+    <div className="fixed bottom-[136px] left-3 right-3 z-40 lg:hidden" ref={searchRef}>
       <div className="relative">
         <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
@@ -64,13 +64,25 @@ export function BottomSearchBar() {
           value={searchQuery}
           onChange={handleSearchChange}
           onFocus={() => searchQuery.trim() && setShowSearchDropdown(true)}
-          placeholder="Search songs..."
-          className={`w-full pl-10 pr-4 py-3 rounded-2xl text-sm font-bold transition-all shadow-2xl ${
+          placeholder="Search songs.."
+          className={`w-full pl-10 pr-10 py-3 rounded-2xl text-sm font-bold transition-all shadow-2xl ${
             isDark
-              ? 'bg-[#0F1623]/90 backdrop-blur-3xl border border-white/15 text-white placeholder-slate-400'
-              : 'bg-white/90 backdrop-blur-3xl border border-slate-200 text-slate-900 placeholder-slate-400'
+              ? 'bg-[#0F1623]/95 backdrop-blur-3xl border border-white/15 text-white placeholder-slate-400 focus:border-blue-500/50 focus:outline-none'
+              : 'bg-white/95 backdrop-blur-3xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500/50 focus:outline-none'
           }`}
         />
+        {searchQuery && (
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setSearchResults([]);
+              setShowSearchDropdown(false);
+            }}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
 
         {showSearchDropdown && (
           <div

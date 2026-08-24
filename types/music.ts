@@ -41,7 +41,7 @@ export type RepeatMode = 'off' | 'all' | 'one';
 
 export interface UserProfile {
   name: string;
-  email: string;
+  email?: string;
   phone?: string;
   avatarUrl?: string;
   isPro?: boolean;
