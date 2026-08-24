@@ -10,6 +10,7 @@ import { UploadModal } from '@/components/upload/UploadModal';
 import { YouTubeBridge } from '@/components/player/YouTubeBridge';
 import { MobileNav } from '@/components/layout/MobileNav';
 import { Footer } from '@/components/layout/Footer';
+import { BottomSearchBar } from '@/components/layout/BottomSearchBar';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -49,6 +50,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Bottom Navigation Bar */}
       <MobileNav />
+
+      {/* Floating Bottom Search Bar */}
+      <BottomSearchBar />
 
       {/* Global Persistent Bottom Player Bar / Footer */}
       <PersistentPlayerBar />

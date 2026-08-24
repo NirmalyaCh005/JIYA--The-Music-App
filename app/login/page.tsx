@@ -17,6 +17,15 @@ import {
   KeyRound,
 } from 'lucide-react';
 import { usePlayerStore } from '@/lib/store/usePlayerStore';
+import { auth } from '@/lib/firebase';
+import {
+  signInWithPhoneNumber,
+  RecaptchaVerifier,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup
+} from 'firebase/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -55,7 +64,7 @@ export default function LoginPage() {
     return () => clearInterval(interval);
   }, [step, timer]);
 
-  // Step 1: Send SMS / Email OTP Handler
+  // Step 1: Send SMS / Email Auth Handler
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
@@ -69,53 +78,29 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      let endpoint = '/api/auth/send-sms-otp';
-      let payload: any = {};
-
       if (authMethod === 'phone') {
+        setupRecaptcha();
+        const appVerifier = (window as any).recaptchaVerifier;
         const rawDigits = phoneInput.replace(/\D/g, '');
-        if (rawDigits.length < 8) {
+        if (rawDigits.length < 10) {
           setErrorMessage('Please enter a valid 10-digit mobile number');
           setIsLoading(false);
           return;
         }
         const fullPhone = `${countryCode}${rawDigits}`;
-        payload = { phoneNumber: fullPhone, name: userName.trim() };
-      } else {
-        const trimmedEmail = emailInput.trim();
-        if (!trimmedEmail || trimmedEmail.length < 5) {
-          setErrorMessage('Please enter a valid email address');
-          setIsLoading(false);
-          return;
-        }
-        endpoint = '/api/auth/send-otp';
-        payload = { email: trimmedEmail, name: userName.trim() };
-      }
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (data.otpDemo) {
-          setDemoOtp(data.otpDemo);
-        } else {
-          setDemoOtp(null);
-        }
-
+        const confirmation = await signInWithPhoneNumber(auth, fullPhone, appVerifier);
+        setConfirmationResult(confirmation);
         setStep('otp');
-        setTimer(30);
-        setIsResendDisabled(true);
-        const formattedTarget = authMethod === 'phone' ? `${countryCode} ${phoneInput}` : payload.email;
-        setSuccessMessage(`Verification code sent to ${formattedTarget}`);
+        setSuccessMessage(`Verification code sent to ${fullPhone}`);
       } else {
-        setErrorMessage(data.error || 'Failed to send OTP code. Please try again.');
+        setErrorMessage('Firebase Email Authentication requires a password. Switching to Phone Auth is recommended for OTP experience.');
+        setIsLoading(false);
+        return;
       }
-    } catch (err) {
-      setErrorMessage('Network error while requesting OTP code. Please check your connection.');
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || 'Failed to send verification. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -165,163 +150,52 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      let endpoint = '/api/auth/verify-sms-otp';
-      let payload: any = {};
+      if (authMethod === 'phone' && confirmationResult) {
+        const result = await confirmationResult.confirm(otpCode);
+        const user = result.user;
 
-      if (authMethod === 'phone') {
-        const fullPhone = `${countryCode}${phoneInput.replace(/\D/g, '')}`;
-        payload = { phoneNumber: fullPhone, otp: otpCode, name: userName.trim() };
-      } else {
-        endpoint = '/api/auth/verify-otp';
-        payload = { email: emailInput.trim(), otp: otpCode, name: userName.trim() };
-      }
+        const userData = {
+          name: userName.trim(),
+          phone: user.phoneNumber,
+          uid: user.uid,
+          isPro: true
+        };
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (data.token) {
-          localStorage.setItem('jiya_auth_token', data.token);
-          document.cookie = `jiya_auth_token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
-        }
-
-        setUser(data.user);
+        localStorage.setItem('jiya_auth_token', await user.getIdToken());
+        setUser(userData);
         router.push('/');
-      } else {
-        setErrorMessage(data.error || 'Invalid verification OTP code');
       }
-    } catch (err) {
-      setErrorMessage('Verification failed. Please try again.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Invalid verification OTP code');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Google Sign-In Credential Handler
-  const handleGoogleCredentialResponse = (response: any) => {
-    if (!response || !response.credential) return;
+  // Google Sign-In Handler
+  const handleGoogleSignIn = async () => {
+    setErrorMessage('');
     setIsLoading(true);
-
     try {
-      const base64Url = response.credential.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(
-        atob(base64)
-          .split('')
-          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-          .join('')
-      );
-      const payload = JSON.parse(jsonPayload);
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
 
       const googleUser = {
-        name: payload.name || payload.given_name || 'Google Streamer',
-        email: payload.email || 'user.google@jiya.music',
-        avatarUrl: payload.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=300&q=80',
+        name: user.displayName || 'Google Streamer',
+        email: user.email,
+        avatarUrl: user.photoURL || '',
         isPro: true,
       };
 
-      localStorage.setItem('jiya_auth_token', response.credential);
-      document.cookie = `jiya_auth_token=${response.credential}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      localStorage.setItem('jiya_auth_token', await user.getIdToken());
       setUser(googleUser);
       router.push('/');
-    } catch (err) {
-      console.error('Failed to parse Google Credential:', err);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Google Sign-In failed');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (clientId && typeof window !== 'undefined') {
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        if ((window as any).google && (window as any).google.accounts) {
-          (window as any).google.accounts.id.initialize({
-            client_id: clientId,
-            callback: handleGoogleCredentialResponse,
-          });
-
-          const btnContainer = document.getElementById('google-btn-container');
-          if (btnContainer) {
-            (window as any).google.accounts.id.renderButton(btnContainer, {
-              theme: 'outline',
-              size: 'large',
-              width: '100%',
-            });
-          }
-        }
-      };
-      document.body.appendChild(script);
-    }
-  }, [authMethod]);
-
-  // Check for Google OAuth hash token on redirect back from Google
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const hash = window.location.hash;
-    if (hash && hash.includes('access_token=')) {
-      const params = new URLSearchParams(hash.substring(1));
-      const accessToken = params.get('access_token');
-
-      if (accessToken) {
-        setIsLoading(true);
-        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
-          .then((res) => res.json())
-          .then((googleProfile) => {
-            if (googleProfile && googleProfile.email) {
-              const googleUser = {
-                name: googleProfile.name || googleProfile.given_name || 'Google Streamer',
-                email: googleProfile.email,
-                avatarUrl: googleProfile.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=300&q=80',
-                isPro: true,
-              };
-              localStorage.setItem('jiya_auth_token', accessToken);
-              document.cookie = `jiya_auth_token=${accessToken}; path=/; max-age=${7 * 24 * 60 * 60}`;
-              setUser(googleUser);
-              router.push('/');
-            }
-          })
-          .catch((err) => {
-            console.error('Failed to fetch Google user profile:', err);
-          })
-          .finally(() => {
-            setIsLoading(false);
-          });
-      }
-    }
-  }, []);
-
-  // Google OAuth Login Action (Redirects to Google Official Accounts Screen)
-  const handleGoogleSignIn = () => {
-    setErrorMessage('');
-
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      setErrorMessage('Google Client ID is not configured yet. Please add NEXT_PUBLIC_GOOGLE_CLIENT_ID in Vercel Environment Variables.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    if ((window as any).google && (window as any).google.accounts) {
-      (window as any).google.accounts.id.prompt();
-    }
-
-    const redirectUri = encodeURIComponent(window.location.origin + '/login');
-    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=email%20profile%20openid&prompt=select_account`;
-
-    window.location.href = googleAuthUrl;
   };
 
   return (
@@ -664,6 +538,7 @@ export default function LoginPage() {
         )}
 
         {/* Security Guarantee Footer */}
+        <div id="recaptcha-container"></div>
         <div className="pt-5 border-t border-white/10 flex items-center justify-center gap-2 text-xs text-slate-400 font-semibold">
           <ShieldCheck className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
           <span>Encrypted 256-bit Secure Authentication Engine</span>
